@@ -2,11 +2,12 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Favicon } from './components/Favicon'
 import { Icon } from './components/Icon'
 import { Modal } from './components/Modal'
+import { DataTransferModal } from './data-transfer/DataTransferModal'
 import { getCurrentPageDraft, openBookmark } from './lib/chrome-api'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { getHostname, UserFacingError } from './lib/bookmark-utils'
 import { getSelectedGroupId, setSelectedGroupId as saveSelectedGroupId } from './lib/preferences'
-import type { Bookmark, BookmarkDraft, CollectionSnapshot, Group } from './types'
+import type { Bookmark, BookmarkDraft, CollectionSnapshot, Group, ImportMode, ImportSummary } from './types'
 
 type BookmarkModalState =
   | {
@@ -48,6 +49,7 @@ export default function App() {
   const [bookmarkModal, setBookmarkModal] = useState<BookmarkModalState>()
   const [groupForm, setGroupForm] = useState<GroupFormState>()
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
+  const [dataManagerOpen, setDataManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Bookmark>()
   const [searchQuery, setSearchQuery] = useState('')
   const searchInputRef = useRef<HTMLInputElement>(null)
@@ -236,6 +238,19 @@ export default function App() {
     setNotice('已创建新分组。')
   }
 
+  const importData = async (imported: CollectionSnapshot, mode: ImportMode) => {
+    setError(undefined)
+    try {
+      const summary = await bookmarkRepository.importSnapshot(imported, mode)
+      const next = await refresh()
+      if (mode === 'replace' && next.meta.groups[0]) selectGroup(next.meta.groups[0].id)
+      setDataManagerOpen(false)
+      setNotice(importNotice(summary))
+    } catch (caught) {
+      throw new UserFacingError(errorMessage(caught))
+    }
+  }
+
   if (!snapshot || !activeGroup) {
     return (
       <main className="app-shell app-shell--loading">
@@ -266,6 +281,15 @@ export default function App() {
             <Icon name="cloud" size={15} />
             <span>已保存</span>
           </span>
+          <button
+            className="icon-button"
+            type="button"
+            onClick={() => setDataManagerOpen(true)}
+            aria-label="数据管理"
+            title="数据管理"
+          >
+            <Icon name="more" />
+          </button>
           <button
             className="icon-button"
             type="button"
@@ -460,6 +484,18 @@ export default function App() {
         />
       )}
 
+      {dataManagerOpen && (
+        <DataTransferModal
+          snapshot={snapshot}
+          onClose={() => setDataManagerOpen(false)}
+          onExported={(filename) => {
+            setDataManagerOpen(false)
+            setNotice(`已导出 ${filename}。`)
+          }}
+          onImport={importData}
+        />
+      )}
+
       {groupManagerOpen && (
         <GroupManagerModal
           groups={snapshot.meta.groups}
@@ -513,6 +549,13 @@ export default function App() {
 
 function eventHint(): string {
   return navigator.platform.toLowerCase().includes('mac') ? '⌘ 点击可在后台' : 'Ctrl 点击可在后台'
+}
+
+function importNotice(summary: ImportSummary): string {
+  const imported = `已导入 ${summary.groupsAdded} 个分组和 ${summary.bookmarksAdded} 个网站。`
+  return summary.bookmarksSkipped > 0
+    ? `${imported} 跳过 ${summary.bookmarksSkipped} 个重复网站。`
+    : imported
 }
 
 function EmptyState({

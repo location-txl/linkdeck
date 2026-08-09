@@ -1,8 +1,9 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { installChromeMock } from './test/chrome'
+import { serializeBackup } from './data-transfer/data-transfer'
 
 describe('LinkDeck popup', () => {
   beforeEach(() => {
@@ -11,6 +12,7 @@ describe('LinkDeck popup', () => {
 
   afterEach(() => {
     cleanup()
+    vi.restoreAllMocks()
   })
 
   it('adds and deletes a manually entered bookmark', async () => {
@@ -98,6 +100,99 @@ describe('LinkDeck popup', () => {
     expect(search).toHaveValue('GitHub')
     expect(search.selectionStart).toBe(0)
     expect(search.selectionEnd).toBe('GitHub'.length)
+  })
+
+  it('downloads a JSON backup from data management', async () => {
+    const user = userEvent.setup()
+    const createObjectUrl = vi.spyOn(URL, 'createObjectURL').mockReturnValue('blob:backup')
+    const revokeObjectUrl = vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => undefined)
+    const click = vi.spyOn(HTMLAnchorElement.prototype, 'click').mockImplementation(() => undefined)
+    render(<App />)
+
+    await screen.findByRole('heading', { name: '默认' })
+    await user.click(screen.getByRole('button', { name: '数据管理' }))
+    await user.click(screen.getByRole('button', { name: /导出 JSON/ }))
+
+    expect(createObjectUrl).toHaveBeenCalledOnce()
+    expect(click).toHaveBeenCalledOnce()
+    expect(revokeObjectUrl).toHaveBeenCalledWith('blob:backup')
+    expect(screen.getByText(/已导出 linkdeck-backup-/)).toBeInTheDocument()
+  })
+
+  it('previews and merges a JSON backup after an explicit mode choice', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '默认' })
+
+    const json = serializeBackup({
+      meta: {
+        schemaVersion: 1,
+        groups: [{ id: 'reading', name: '阅读', createdAt: 1, updatedAt: 2 }],
+      },
+      bookmarks: [{
+        id: 'mdn',
+        groupId: 'reading',
+        title: 'MDN',
+        url: 'https://developer.mozilla.org/',
+        createdAt: 3,
+        updatedAt: 4,
+      }],
+    })
+
+    await user.click(screen.getByRole('button', { name: '数据管理' }))
+    await user.upload(
+      screen.getByLabelText('选择 JSON 备份文件'),
+      new File([json], 'backup.json', { type: 'application/json' }),
+    )
+    expect(await screen.findByText('backup.json')).toBeInTheDocument()
+    expect(screen.getByText('1 个分组 · 1 个网站')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('radio', { name: /智能合并/ }))
+    await user.click(screen.getByRole('button', { name: '开始导入' }))
+
+    expect(await screen.findByText('已导入 1 个分组和 1 个网站。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: /^阅读/ }))
+    expect(await screen.findByText('MDN')).toBeInTheDocument()
+  })
+
+  it('warns before replacing current data', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '默认' })
+
+    const json = serializeBackup({
+      meta: {
+        schemaVersion: 1,
+        groups: [{ id: 'replacement', name: '替换数据', createdAt: 1, updatedAt: 2 }],
+      },
+      bookmarks: [],
+    })
+    await user.click(screen.getByRole('button', { name: '数据管理' }))
+    await user.upload(
+      screen.getByLabelText('选择 JSON 备份文件'),
+      new File([json], 'replace.json', { type: 'application/json' }),
+    )
+    await screen.findByText('replace.json')
+    await user.click(screen.getByRole('radio', { name: /完整替换/ }))
+
+    expect(screen.getByText('当前收藏会被备份内容覆盖，此操作无法撤销。')).toBeInTheDocument()
+    await user.click(screen.getByRole('button', { name: '开始导入' }))
+    expect(await screen.findByRole('heading', { name: '替换数据' })).toBeInTheDocument()
+  })
+
+  it('keeps an invalid backup error inside data management', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '默认' })
+
+    await user.click(screen.getByRole('button', { name: '数据管理' }))
+    await user.upload(
+      screen.getByLabelText('选择 JSON 备份文件'),
+      new File(['{'], 'broken.json', { type: 'application/json' }),
+    )
+
+    expect(await screen.findByText('无法解析 JSON 文件，请确认文件内容完整。')).toBeInTheDocument()
+    expect(screen.getByRole('dialog', { name: '数据管理' })).toBeInTheDocument()
   })
 })
 

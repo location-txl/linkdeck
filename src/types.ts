@@ -44,3 +44,10 @@ export type CollectionSnapshot = {
   bookmarks: Bookmark[]
 }
 
+export type ImportMode = 'replace' | 'merge'
+
+export type ImportSummary = {
+  groupsAdded: number
+  bookmarksAdded: number
+  bookmarksSkipped: number
+}

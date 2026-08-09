@@ -9,6 +9,7 @@ export type IconName =
   | 'close'
   | 'cloud'
   | 'deck'
+  | 'download'
   | 'edit'
   | 'folder'
   | 'globe'
@@ -17,6 +18,7 @@ export type IconName =
   | 'more'
   | 'search'
   | 'trash'
+  | 'upload'
   | 'warning'
 
 type IconProps = SVGProps<SVGSVGElement> & {
@@ -91,6 +93,13 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
           <path d="M8 20h8a4 4 0 0 0 4-4V8" />
         </svg>
       )
+    case 'download':
+      return (
+        <svg {...common}>
+          <path d="M12 3.5v11M7.5 10.5 12 15l4.5-4.5" />
+          <path d="M4.5 16.5v2.5a1.5 1.5 0 0 0 1.5 1.5h12a1.5 1.5 0 0 0 1.5-1.5v-2.5" />
+        </svg>
+      )
     case 'edit':
       return (
         <svg {...common}>
@@ -145,6 +154,13 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
       return (
         <svg {...common}>
           <path d="M4.5 7.5h15M9 7.5V5h6v2.5M7 7.5l.7 12h8.6l.7-12M10 11v4.8M14 11v4.8" />
+        </svg>
+      )
+    case 'upload':
+      return (
+        <svg {...common}>
+          <path d="M12 15V4M7.5 8.5 12 4l4.5 4.5" />
+          <path d="M4.5 15.5V19A1.5 1.5 0 0 0 6 20.5h12a1.5 1.5 0 0 0 1.5-1.5v-3.5" />
         </svg>
       )
     case 'warning':

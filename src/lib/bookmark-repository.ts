@@ -8,6 +8,8 @@ import {
   type BookmarkDraft,
   type CollectionSnapshot,
   type Group,
+  type ImportMode,
+  type ImportSummary,
   type LinkDeckMeta,
 } from '../types'
 import {
@@ -139,6 +141,38 @@ function groupNameExists(groups: Group[], name: string, excludedId?: string): bo
   )
 }
 
+function isLinkDeckKey(key: string): boolean {
+  return key === STORAGE_KEYS.meta || key.startsWith(STORAGE_KEYS.bookmarkPrefix)
+}
+
+function snapshotItems(snapshot: CollectionSnapshot): StorageRecord {
+  return {
+    [STORAGE_KEYS.meta]: snapshot.meta,
+    ...Object.fromEntries(
+      snapshot.bookmarks.map((bookmark) => [bookmarkKey(bookmark.id), bookmark]),
+    ),
+  }
+}
+
+function assertStorageCapacity(items: StorageRecord): void {
+  if (Object.keys(items).length > MAX_SYNC_ITEMS) {
+    throw new UserFacingError('同步存储已达到项目数量上限。')
+  }
+
+  let totalBytes = 0
+  for (const [key, value] of Object.entries(items)) {
+    const bytes = storageItemBytes(key, value)
+    if (bytes > SYNC_QUOTA_BYTES_PER_ITEM) {
+      throw new UserFacingError('单条数据太大，无法同步保存。')
+    }
+    totalBytes += bytes
+  }
+
+  if (totalBytes > SYNC_QUOTA_BYTES) {
+    throw new UserFacingError('浏览器同步存储空间不足，无法保存。')
+  }
+}
+
 export class BookmarkRepository {
   async load(): Promise<CollectionSnapshot> {
     const allItems = await getAllSyncItems()
@@ -257,6 +291,23 @@ export class BookmarkRepository {
     await removeSyncItems([bookmarkKey(bookmarkId)])
   }
 
+  async importSnapshot(imported: CollectionSnapshot, mode: ImportMode): Promise<ImportSummary> {
+    const current = await this.load()
+    const { snapshot, summary } = mode === 'replace'
+      ? {
+          snapshot: clone(imported),
+          summary: {
+            groupsAdded: imported.meta.groups.length,
+            bookmarksAdded: imported.bookmarks.length,
+            bookmarksSkipped: 0,
+          },
+        }
+      : this.mergeSnapshots(current, imported)
+
+    await this.replaceSnapshot(snapshot)
+    return summary
+  }
+
   private buildBookmark(
     draft: BookmarkDraft,
     snapshot: CollectionSnapshot,
@@ -287,6 +338,104 @@ export class BookmarkRepository {
       url,
       createdAt: existing?.createdAt ?? now,
       updatedAt: now,
+    }
+  }
+
+  private mergeSnapshots(
+    current: CollectionSnapshot,
+    imported: CollectionSnapshot,
+  ): { snapshot: CollectionSnapshot; summary: ImportSummary } {
+    const groups = clone(current.meta.groups)
+    const bookmarks = clone(current.bookmarks)
+    const groupsByName = new Map(
+      groups.map((group) => [group.name.toLocaleLowerCase(), group]),
+    )
+    const importedGroupIds = new Map<string, string>()
+    let groupsAdded = 0
+
+    for (const importedGroup of imported.meta.groups) {
+      const existing = groupsByName.get(importedGroup.name.toLocaleLowerCase())
+      if (existing) {
+        importedGroupIds.set(importedGroup.id, existing.id)
+        continue
+      }
+
+      const group = { ...clone(importedGroup), id: createId() }
+      groups.push(group)
+      groupsByName.set(group.name.toLocaleLowerCase(), group)
+      importedGroupIds.set(importedGroup.id, group.id)
+      groupsAdded += 1
+    }
+
+    if (groups.length > MAX_GROUPS) {
+      throw new UserFacingError(`合并后分组不能超过 ${MAX_GROUPS} 个。`)
+    }
+
+    const urlsByGroup = new Map<string, Set<string>>()
+    for (const bookmark of bookmarks) {
+      const urls = urlsByGroup.get(bookmark.groupId) ?? new Set<string>()
+      urls.add(normalizeUrl(bookmark.url))
+      urlsByGroup.set(bookmark.groupId, urls)
+    }
+
+    let bookmarksAdded = 0
+    let bookmarksSkipped = 0
+    for (const importedBookmark of imported.bookmarks) {
+      const groupId = importedGroupIds.get(importedBookmark.groupId)
+      if (!groupId) throw new UserFacingError('导入数据引用了不存在的分组。')
+
+      const normalizedUrl = normalizeUrl(importedBookmark.url)
+      const urls = urlsByGroup.get(groupId) ?? new Set<string>()
+      if (urls.has(normalizedUrl)) {
+        bookmarksSkipped += 1
+        continue
+      }
+
+      bookmarks.push({
+        ...clone(importedBookmark),
+        id: createId(),
+        groupId,
+        url: normalizedUrl,
+      })
+      urls.add(normalizedUrl)
+      urlsByGroup.set(groupId, urls)
+      bookmarksAdded += 1
+    }
+
+    return {
+      snapshot: { meta: { schemaVersion: 1, groups }, bookmarks },
+      summary: { groupsAdded, bookmarksAdded, bookmarksSkipped },
+    }
+  }
+
+  private async replaceSnapshot(snapshot: CollectionSnapshot): Promise<void> {
+    const currentItems = await getAllSyncItems()
+    const previousLinkDeckItems = Object.fromEntries(
+      Object.entries(currentItems).filter(([key]) => isLinkDeckKey(key)),
+    )
+    const preservedItems = Object.fromEntries(
+      Object.entries(currentItems).filter(([key]) => !isLinkDeckKey(key)),
+    )
+    const nextLinkDeckItems = snapshotItems(snapshot)
+    assertStorageCapacity({ ...preservedItems, ...nextLinkDeckItems })
+
+    const previousBookmarkKeys = Object.keys(currentItems).filter((key) =>
+      key.startsWith(STORAGE_KEYS.bookmarkPrefix),
+    )
+
+    try {
+      if (previousBookmarkKeys.length > 0) await removeSyncItems(previousBookmarkKeys)
+      await setSyncItems(nextLinkDeckItems)
+    } catch {
+      try {
+        const afterFailure = await getAllSyncItems()
+        const failedKeys = Object.keys(afterFailure).filter(isLinkDeckKey)
+        if (failedKeys.length > 0) await removeSyncItems(failedKeys)
+        await setSyncItems(previousLinkDeckItems)
+      } catch {
+        throw new UserFacingError('导入失败，且无法自动恢复原数据，请重新导入之前的备份。')
+      }
+      throw new UserFacingError('导入失败，原数据已恢复，请稍后重试。')
     }
   }
 
