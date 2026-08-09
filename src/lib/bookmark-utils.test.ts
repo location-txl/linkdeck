@@ -21,7 +21,7 @@ describe('bookmark utilities', () => {
     const url = 'https://docs.example.com/path/to/page?token=private#fragment'
     expect(getHostname(url)).toBe('docs.example.com')
     expect(makeFaviconUrl(url)).toBe(
-      'https://favicon.im/docs.example.com?throw-error-on-404=true',
+      'https://a.favicon.im/docs.example.com?throw-error-on-404=true',
     )
   })
 
@@ -30,4 +30,3 @@ describe('bookmark utilities', () => {
     expect(() => validateGroupName('')).toThrow('请输入分组名称。')
   })
 })
-

@@ -18,7 +18,6 @@ export function Favicon({ url }: FaviconProps) {
         <img
           src={makeFaviconUrl(url)}
           alt=""
-          crossOrigin="anonymous"
           referrerPolicy="no-referrer"
           loading="lazy"
           decoding="async"
@@ -31,4 +30,3 @@ export function Favicon({ url }: FaviconProps) {
     </span>
   )
 }
-

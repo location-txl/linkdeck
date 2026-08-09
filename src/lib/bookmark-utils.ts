@@ -50,7 +50,7 @@ export function getHostname(url: string): string {
 
 export function makeFaviconUrl(url: string): string {
   const hostname = getHostname(url)
-  return `https://favicon.im/${encodeURIComponent(hostname)}?throw-error-on-404=true`
+  return `https://a.favicon.im/${encodeURIComponent(hostname)}?throw-error-on-404=true`
 }
 
 export function fallbackTitleForUrl(url: string): string {
@@ -94,4 +94,3 @@ export function storageItemBytes(key: string, value: unknown): number {
   return new TextEncoder().encode(key).byteLength +
     new TextEncoder().encode(JSON.stringify(value)).byteLength
 }
-
