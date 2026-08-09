@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } from 'react'
 import { Favicon } from './components/Favicon'
 import { Icon } from './components/Icon'
 import { Modal } from './components/Modal'
@@ -49,6 +49,8 @@ export default function App() {
   const [groupForm, setGroupForm] = useState<GroupFormState>()
   const [groupManagerOpen, setGroupManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Bookmark>()
+  const [searchQuery, setSearchQuery] = useState('')
+  const searchInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
     const next = await bookmarkRepository.load()
@@ -116,6 +118,22 @@ export default function App() {
     return () => window.clearTimeout(timeout)
   }, [notice])
 
+  useEffect(() => {
+    const focusSearch = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey) || event.key.toLocaleLowerCase() !== 'f') return
+
+      const input = searchInputRef.current
+      if (!input) return
+
+      event.preventDefault()
+      input.focus()
+      input.select()
+    }
+
+    window.addEventListener('keydown', focusSearch)
+    return () => window.removeEventListener('keydown', focusSearch)
+  }, [])
+
   const runMutation = useCallback(
     async (operation: () => Promise<unknown>, successMessage: string) => {
       setError(undefined)
@@ -146,6 +164,25 @@ export default function App() {
         ? snapshot.bookmarks.filter((bookmark) => bookmark.groupId === activeGroup.id)
         : [],
     [activeGroup, snapshot],
+  )
+
+  const searchTerm = useMemo(() => searchQuery.trim().toLocaleLowerCase(), [searchQuery])
+  const isSearching = searchTerm.length > 0
+
+  const visibleBookmarks = useMemo(() => {
+    if (!snapshot || !isSearching) return activeBookmarks
+
+    return snapshot.bookmarks.filter((bookmark) => {
+      return (
+        bookmark.title.toLocaleLowerCase().includes(searchTerm) ||
+        bookmark.url.toLocaleLowerCase().includes(searchTerm)
+      )
+    })
+  }, [activeBookmarks, isSearching, searchTerm, snapshot])
+
+  const groupNames = useMemo(
+    () => new Map(snapshot?.meta.groups.map((group) => [group.id, group.name])),
+    [snapshot],
   )
 
   const selectGroup = (groupId: string) => {
@@ -306,28 +343,55 @@ export default function App() {
         </button>
       </nav>
 
+      <div className="search-field" role="search">
+        <Icon className="search-field__icon" name="search" size={16} />
+        <input
+          ref={searchInputRef}
+          type="search"
+          value={searchQuery}
+          onChange={(event) => setSearchQuery(event.target.value)}
+          placeholder="搜索名称或网址"
+          aria-label="搜索收藏"
+          aria-keyshortcuts="Meta+F Control+F"
+          title="按 ⌘F 搜索"
+        />
+        {searchQuery && (
+          <button
+            className="search-field__clear"
+            type="button"
+            onClick={() => setSearchQuery('')}
+            aria-label="清除搜索"
+            title="清除搜索"
+          >
+            <Icon name="close" size={14} />
+          </button>
+        )}
+      </div>
+
       <section className="bookmarks">
         <div className="bookmarks__heading">
           <div>
             <span className="bookmarks__label">
-              <Icon name="folder" size={14} />
-              当前分组
+              <Icon name={isSearching ? 'search' : 'folder'} size={14} />
+              {isSearching ? '搜索结果' : '当前分组'}
             </span>
-            <h2>{activeGroup.name}</h2>
+            <h2>{isSearching ? `${visibleBookmarks.length} 条结果` : activeGroup.name}</h2>
           </div>
-          <button
-            className="text-button"
-            type="button"
-            onClick={() => setGroupManagerOpen(true)}
-          >
-            管理
-            <Icon name="chevron-right" size={15} />
-          </button>
+          {!isSearching && (
+            <button
+              className="text-button"
+              type="button"
+              onClick={() => setGroupManagerOpen(true)}
+            >
+              管理
+              <Icon name="chevron-right" size={15} />
+            </button>
+          )}
         </div>
 
-        {activeBookmarks.length > 0 ? (
+        {visibleBookmarks.length > 0 ? (
           <div className="bookmark-list">
-            {activeBookmarks.map((bookmark) => (
+            {visibleBookmarks.map((bookmark) => (
               <article className="bookmark-row" key={bookmark.id}>
                 <button
                   className="bookmark-row__open"
@@ -339,6 +403,11 @@ export default function App() {
                   <span className="bookmark-row__copy">
                     <strong>{bookmark.title}</strong>
                     <small>{getHostname(bookmark.url)}</small>
+                    {isSearching && (
+                      <span className="bookmark-row__group">
+                        {groupNames.get(bookmark.groupId)}
+                      </span>
+                    )}
                   </span>
                   <Icon name="arrow-up-right" size={16} />
                 </button>
@@ -360,6 +429,8 @@ export default function App() {
               </article>
             ))}
           </div>
+        ) : isSearching ? (
+          <SearchEmptyState query={searchQuery.trim()} onClear={() => setSearchQuery('')} />
         ) : (
           <EmptyState onAddCurrent={() => void openCurrentPageForm()} onAddManual={openManualForm} />
         )}
@@ -465,6 +536,23 @@ function EmptyState({
         </button>
         <button className="button button--quiet" type="button" onClick={onAddManual}>
           手动添加
+        </button>
+      </div>
+    </div>
+  )
+}
+
+function SearchEmptyState({ query, onClear }: { query: string; onClear: () => void }) {
+  return (
+    <div className="empty-state empty-state--search">
+      <span className="empty-state__mark" aria-hidden="true">
+        <Icon name="search" size={22} />
+      </span>
+      <h3>没有找到匹配的网站</h3>
+      <p>收藏名称或网址中没有包含“{query}”。</p>
+      <div className="empty-state__actions">
+        <button className="button button--quiet" type="button" onClick={onClear}>
+          清除搜索
         </button>
       </div>
     </div>
@@ -762,4 +850,3 @@ function ConfirmDeleteModal({
     </Modal>
   )
 }
-

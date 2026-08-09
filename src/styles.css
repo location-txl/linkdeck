@@ -403,6 +403,65 @@ p {
   color: var(--accent);
 }
 
+.search-field {
+  display: flex;
+  height: 34px;
+  align-items: center;
+  gap: 7px;
+  margin: 0 18px 8px;
+  padding: 0 8px 0 10px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--paper-raised) 88%, var(--paper-quiet));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.35);
+  color: var(--ink-faint);
+  transition: border-color 150ms ease, box-shadow 150ms ease, background 150ms ease;
+}
+
+.search-field:focus-within {
+  border-color: color-mix(in srgb, var(--accent) 60%, var(--line));
+  background: var(--paper-raised);
+  box-shadow: 0 0 0 3px var(--accent-wash), inset 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+.search-field__icon {
+  flex: 0 0 auto;
+  color: var(--accent-deep);
+}
+
+.search-field input {
+  min-width: 0;
+  flex: 1;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font-size: 11px;
+}
+
+.search-field input::placeholder {
+  color: var(--ink-faint);
+}
+
+.search-field input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.search-field__clear {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  place-items: center;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink-faint);
+}
+
+.search-field__clear:hover {
+  background: var(--paper-quiet);
+  color: var(--accent-deep);
+}
+
 .bookmarks {
   min-height: 0;
   flex: 1;
@@ -530,6 +589,19 @@ p {
   white-space: nowrap;
 }
 
+.bookmark-row__group {
+  width: fit-content;
+  margin-top: 1px;
+  padding: 1px 5px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--paper-quiet);
+  color: var(--ink-soft);
+  font-size: 8px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
 .bookmark-row__edit {
   flex: 0 0 auto;
   margin: 0 7px 0 1px;
@@ -588,6 +660,10 @@ p {
   border-radius: 13px;
   background: rgba(255, 255, 255, 0.12);
   text-align: center;
+}
+
+.empty-state--search {
+  min-height: 185px;
 }
 
 .empty-state__mark {
@@ -948,4 +1024,3 @@ p {
     transition-duration: 0.01ms !important;
   }
 }
-
