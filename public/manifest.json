@@ -1,0 +1,28 @@
+{
+  "manifest_version": 3,
+  "name": "__MSG_extensionName__",
+  "short_name": "LinkDeck",
+  "description": "__MSG_extensionDescription__",
+  "version": "1.0.0",
+  "default_locale": "zh_CN",
+  "action": {
+    "default_title": "__MSG_extensionName__",
+    "default_popup": "index.html",
+    "default_icon": {
+      "16": "icons/icon-16.png",
+      "32": "icons/icon-32.png",
+      "48": "icons/icon-48.png",
+      "128": "icons/icon-128.png"
+    }
+  },
+  "icons": {
+    "16": "icons/icon-16.png",
+    "32": "icons/icon-32.png",
+    "48": "icons/icon-48.png",
+    "128": "icons/icon-128.png"
+  },
+  "permissions": ["storage", "activeTab"],
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data: https://favicon.im;"
+  }
+}

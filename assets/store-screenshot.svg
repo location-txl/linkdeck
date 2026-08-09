@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="800" viewBox="0 0 1280 800">
+  <rect width="1280" height="800" fill="#ECE4D6"/>
+  <circle cx="1115" cy="112" r="260" fill="#EFBD55" opacity=".34"/>
+  <circle cx="88" cy="726" r="235" fill="#DF5B36" opacity=".12"/>
+  <rect x="150" y="90" width="980" height="620" rx="28" fill="#FCFAF4" stroke="#D8CCBA" stroke-width="2"/>
+  <rect x="150" y="90" width="980" height="56" rx="28" fill="#29231D"/>
+  <circle cx="184" cy="118" r="7" fill="#DF5B36"/>
+  <circle cx="207" cy="118" r="7" fill="#EFBD55"/>
+  <circle cx="230" cy="118" r="7" fill="#EEE7DA"/>
+  <text x="640" y="124" fill="#F7F0E4" font-family="Arial, sans-serif" font-size="14" text-anchor="middle">LinkDeck · 浏览器扩展浮窗</text>
+  <g transform="translate(438 168)">
+    <rect width="405" height="492" rx="20" fill="#F5F0E6" stroke="#CFC2B0" stroke-width="2"/>
+    <text x="28" y="40" fill="#8E8478" font-family="Arial, sans-serif" font-size="10" font-weight="700" letter-spacing="1.7">PERSONAL LINKS</text>
+    <text x="28" y="69" fill="#29231D" font-family="Georgia, serif" font-size="28" font-weight="700">LinkDeck</text>
+    <rect x="28" y="95" width="68" height="27" rx="8" fill="#29231D"/>
+    <text x="43" y="113" fill="#F7F0E4" font-family="Arial, sans-serif" font-size="11">常用 12</text>
+    <rect x="103" y="95" width="62" height="27" rx="8" fill="#EEE7DA"/>
+    <text x="116" y="113" fill="#6D665D" font-family="Arial, sans-serif" font-size="11">工作 5</text>
+    <rect x="172" y="95" width="62" height="27" rx="8" fill="#EEE7DA"/>
+    <text x="185" y="113" fill="#6D665D" font-family="Arial, sans-serif" font-size="11">灵感 3</text>
+    <text x="29" y="158" fill="#8E8478" font-family="Arial, sans-serif" font-size="10" font-weight="700">当前分组</text>
+    <text x="29" y="184" fill="#29231D" font-family="Georgia, serif" font-size="21" font-weight="700">常用</text>
+    <g transform="translate(22 203)">
+      <rect width="361" height="68" rx="12" fill="#FCFAF4" stroke="#DDD4C5"/>
+      <rect x="12" y="17" width="34" height="34" rx="9" fill="#DF5B36"/>
+      <text x="62" y="33" fill="#29231D" font-family="Arial, sans-serif" font-size="13" font-weight="700">Notion</text>
+      <text x="62" y="49" fill="#8E8478" font-family="Arial, sans-serif" font-size="10">notion.so</text>
+      <text x="330" y="39" fill="#8E8478" font-family="Arial, sans-serif" font-size="18">↗</text>
+    </g>
+    <g transform="translate(22 278)">
+      <rect width="361" height="68" rx="12" fill="#FCFAF4" stroke="#DDD4C5"/>
+      <rect x="12" y="17" width="34" height="34" rx="9" fill="#29231D"/>
+      <text x="62" y="33" fill="#29231D" font-family="Arial, sans-serif" font-size="13" font-weight="700">GitHub</text>
+      <text x="62" y="49" fill="#8E8478" font-family="Arial, sans-serif" font-size="10">github.com</text>
+      <text x="330" y="39" fill="#8E8478" font-family="Arial, sans-serif" font-size="18">↗</text>
+    </g>
+    <g transform="translate(22 353)">
+      <rect width="361" height="68" rx="12" fill="#FCFAF4" stroke="#DDD4C5"/>
+      <rect x="12" y="17" width="34" height="34" rx="9" fill="#EFBD55"/>
+      <text x="62" y="33" fill="#29231D" font-family="Arial, sans-serif" font-size="13" font-weight="700">Linear</text>
+      <text x="62" y="49" fill="#8E8478" font-family="Arial, sans-serif" font-size="10">linear.app</text>
+      <text x="330" y="39" fill="#8E8478" font-family="Arial, sans-serif" font-size="18">↗</text>
+    </g>
+  </g>
+  <text x="640" y="742" fill="#6D665D" font-family="Arial, sans-serif" font-size="15" text-anchor="middle">分组保存常用网址，点击即在新标签页打开</text>
+</svg>
+
