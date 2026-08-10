@@ -3,6 +3,6 @@
     "message": "LinkDeck"
   },
   "extensionDescription": {
-    "message": "按分组收藏常用网址，支持浏览器同步和可选 Gist 同步。"
+    "message": "用多标签收藏常用网址，支持浏览器同步和可选 Gist 同步。"
   }
 }

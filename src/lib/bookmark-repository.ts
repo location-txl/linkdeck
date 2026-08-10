@@ -1,16 +1,19 @@
 import {
-  MAX_GROUPS,
   MAX_SYNC_ITEMS,
   STORAGE_KEYS,
   SYNC_QUOTA_BYTES,
   SYNC_QUOTA_BYTES_PER_ITEM,
   type Bookmark,
   type BookmarkDraft,
+  type BookmarkSaveResult,
   type CollectionSnapshot,
-  type Group,
   type ImportMode,
   type ImportSummary,
+  type LegacyBookmark,
+  type LegacyCollectionSnapshot,
+  type LegacyGroup,
   type LinkDeckMeta,
+  type Tag,
 } from '../types'
 import {
   UserFacingError,
@@ -18,13 +21,15 @@ import {
   normalizeUrl,
   storageItemBytes,
   validateBookmarkTitle,
-  validateGroupName,
+  validateTagName,
 } from './bookmark-utils'
+import { migrateLegacySnapshot } from './snapshot-migration'
 
 type StorageRecord = Record<string, unknown>
 type FallbackListener = () => void
 
 const fallbackStorage = new Map<string, unknown>()
+const fallbackLocalStorage = new Map<string, unknown>()
 const fallbackListeners = new Set<FallbackListener>()
 
 function clone<T>(value: T): T {
@@ -35,14 +40,13 @@ function hasChromeSyncStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.sync)
 }
 
-async function getAllSyncItems(): Promise<StorageRecord> {
-  if (hasChromeSyncStorage()) {
-    return (await chrome.storage.sync.get(null)) as StorageRecord
-  }
+function hasChromeLocalStorage(): boolean {
+  return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
+}
 
-  return Object.fromEntries(
-    [...fallbackStorage.entries()].map(([key, value]) => [key, clone(value)]),
-  )
+async function getAllSyncItems(): Promise<StorageRecord> {
+  if (hasChromeSyncStorage()) return (await chrome.storage.sync.get(null)) as StorageRecord
+  return Object.fromEntries([...fallbackStorage.entries()].map(([key, value]) => [key, clone(value)]))
 }
 
 async function setSyncItems(items: StorageRecord): Promise<void> {
@@ -50,115 +54,164 @@ async function setSyncItems(items: StorageRecord): Promise<void> {
     await chrome.storage.sync.set(items)
     return
   }
-
   Object.entries(items).forEach(([key, value]) => fallbackStorage.set(key, clone(value)))
   fallbackListeners.forEach((listener) => listener())
 }
 
 async function removeSyncItems(keys: string[]): Promise<void> {
+  if (keys.length === 0) return
   if (hasChromeSyncStorage()) {
     await chrome.storage.sync.remove(keys)
     return
   }
-
   keys.forEach((key) => fallbackStorage.delete(key))
   fallbackListeners.forEach((listener) => listener())
 }
 
-async function getSyncBytesInUse(): Promise<number> {
-  if (hasChromeSyncStorage()) {
-    return chrome.storage.sync.getBytesInUse(null)
+async function saveMigrationBackup(snapshot: LegacyCollectionSnapshot): Promise<void> {
+  if (hasChromeLocalStorage()) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.migrationBackup]: snapshot })
+    return
   }
-
-  const allItems = await getAllSyncItems()
-  return Object.entries(allItems).reduce(
-    (total, [key, value]) => total + storageItemBytes(key, value),
-    0,
-  )
+  fallbackLocalStorage.set(STORAGE_KEYS.migrationBackup, clone(snapshot))
 }
 
 function createId(): string {
   return crypto.randomUUID()
 }
 
-function createDefaultMeta(): LinkDeckMeta {
-  const now = Date.now()
-  return {
-    schemaVersion: 1,
-    groups: [
-      {
-        id: createId(),
-        name: '默认',
-        createdAt: now,
-        updatedAt: now,
-      },
-    ],
-  }
+function createEmptyMeta(): LinkDeckMeta {
+  return { schemaVersion: 2, tags: [] }
 }
 
-function isGroup(value: unknown): value is Group {
+function isTag(value: unknown): value is Tag {
   if (!value || typeof value !== 'object') return false
-  const candidate = value as Partial<Group>
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.name === 'string' &&
-    typeof candidate.createdAt === 'number' &&
-    typeof candidate.updatedAt === 'number'
-  )
+  const candidate = value as Partial<Tag>
+  return typeof candidate.id === 'string' && typeof candidate.name === 'string' &&
+    typeof candidate.createdAt === 'number' && typeof candidate.updatedAt === 'number'
 }
 
 function isBookmark(value: unknown): value is Bookmark {
   if (!value || typeof value !== 'object') return false
   const candidate = value as Partial<Bookmark>
-  return (
-    typeof candidate.id === 'string' &&
-    typeof candidate.groupId === 'string' &&
-    typeof candidate.title === 'string' &&
-    typeof candidate.url === 'string' &&
-    typeof candidate.createdAt === 'number' &&
-    typeof candidate.updatedAt === 'number'
-  )
+  return typeof candidate.id === 'string' && Array.isArray(candidate.tagIds) &&
+    candidate.tagIds.every((tagId) => typeof tagId === 'string') &&
+    typeof candidate.title === 'string' && typeof candidate.url === 'string' &&
+    typeof candidate.createdAt === 'number' && typeof candidate.updatedAt === 'number'
+}
+
+function isLegacyGroup(value: unknown): value is LegacyGroup {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<LegacyGroup>
+  return typeof candidate.id === 'string' && typeof candidate.name === 'string' &&
+    typeof candidate.createdAt === 'number' && typeof candidate.updatedAt === 'number'
+}
+
+function isLegacyBookmark(value: unknown): value is LegacyBookmark {
+  if (!value || typeof value !== 'object') return false
+  const candidate = value as Partial<LegacyBookmark>
+  return typeof candidate.id === 'string' && typeof candidate.groupId === 'string' &&
+    typeof candidate.title === 'string' && typeof candidate.url === 'string' &&
+    typeof candidate.createdAt === 'number' && typeof candidate.updatedAt === 'number'
 }
 
 function parseMeta(value: unknown): LinkDeckMeta | undefined {
   if (!value || typeof value !== 'object') return undefined
   const candidate = value as Partial<LinkDeckMeta>
-  if (candidate.schemaVersion !== 1 || !Array.isArray(candidate.groups)) return undefined
-  if (!candidate.groups.every(isGroup) || candidate.groups.length === 0) return undefined
+  if (candidate.schemaVersion !== 2 || !Array.isArray(candidate.tags) || !candidate.tags.every(isTag)) {
+    return undefined
+  }
   return candidate as LinkDeckMeta
+}
+
+function parseLegacySnapshot(allItems: StorageRecord): LegacyCollectionSnapshot | undefined {
+  const value = allItems[STORAGE_KEYS.legacyMeta]
+  if (!value || typeof value !== 'object') return undefined
+  const meta = value as { schemaVersion?: unknown; groups?: unknown }
+  if (meta.schemaVersion !== 1 || !Array.isArray(meta.groups) || meta.groups.length === 0 || !meta.groups.every(isLegacyGroup)) {
+    return undefined
+  }
+  const groups = meta.groups as LegacyGroup[]
+  const groupIds = new Set(groups.map((group) => group.id))
+  const bookmarks = Object.entries(allItems)
+    .filter(([key, value]) => key.startsWith(STORAGE_KEYS.legacyBookmarkPrefix) && isLegacyBookmark(value))
+    .map(([, value]) => value as LegacyBookmark)
+    .filter((bookmark) => groupIds.has(bookmark.groupId))
+    .sort((left, right) => left.createdAt - right.createdAt)
+  return { meta: { schemaVersion: 1, groups: clone(groups) }, bookmarks: clone(bookmarks) }
 }
 
 function bookmarkKey(id: string): string {
   return `${STORAGE_KEYS.bookmarkPrefix}${id}`
 }
 
-function groupNameExists(groups: Group[], name: string, excludedId?: string): boolean {
-  const comparableName = name.toLocaleLowerCase()
-  return groups.some(
-    (group) =>
-      group.id !== excludedId &&
-      group.name.toLocaleLowerCase() === comparableName,
-  )
+function tagKey(id: string): string {
+  return `${STORAGE_KEYS.tagPrefix}${id}`
 }
 
-function isLinkDeckKey(key: string): boolean {
-  return key === STORAGE_KEYS.meta || key.startsWith(STORAGE_KEYS.bookmarkPrefix)
+/** 为新标签生成严格晚于现有标签的时间戳，保证独立存储后的展示顺序稳定。 */
+function nextTagTimestamp(tags: Tag[]): number {
+  return tags.reduce((next, tag) => Math.max(next, tag.createdAt + 1), Date.now())
+}
+
+function isV2LinkDeckKey(key: string): boolean {
+  return key === STORAGE_KEYS.meta || key.startsWith(STORAGE_KEYS.tagPrefix) ||
+    key.startsWith(STORAGE_KEYS.bookmarkPrefix)
+}
+
+function isLegacyLinkDeckKey(key: string): boolean {
+  return key === STORAGE_KEYS.legacyMeta || key.startsWith(STORAGE_KEYS.legacyBookmarkPrefix)
 }
 
 function snapshotItems(snapshot: CollectionSnapshot): StorageRecord {
   return {
-    [STORAGE_KEYS.meta]: snapshot.meta,
-    ...Object.fromEntries(
-      snapshot.bookmarks.map((bookmark) => [bookmarkKey(bookmark.id), bookmark]),
-    ),
+    // 标签拆成独立存储项，避免两个客户端新增不同标签时互相覆盖整份 meta。
+    [STORAGE_KEYS.meta]: createEmptyMeta(),
+    ...Object.fromEntries(snapshot.meta.tags.map((tag) => [tagKey(tag.id), tag])),
+    ...Object.fromEntries(snapshot.bookmarks.map((bookmark) => [bookmarkKey(bookmark.id), bookmark])),
   }
+}
+
+function snapshotFromItems(allItems: StorageRecord): CollectionSnapshot | undefined {
+  const meta = parseMeta(allItems[STORAGE_KEYS.meta])
+  if (!meta) return undefined
+
+  const tagsById = new Map(meta.tags.map((tag) => [tag.id, tag]))
+  Object.entries(allItems)
+    .filter(([key, value]) => key.startsWith(STORAGE_KEYS.tagPrefix) && isTag(value))
+    .forEach(([, value]) => {
+      const tag = value as Tag
+      tagsById.set(tag.id, tag)
+    })
+  const tags = [...tagsById.values()]
+    .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
+  const tagIds = new Set(tags.map((tag) => tag.id))
+  const bookmarks = Object.entries(allItems)
+    .filter(([key, value]) => key.startsWith(STORAGE_KEYS.bookmarkPrefix) && isBookmark(value))
+    .map(([, value]) => value as Bookmark)
+    // 缺失标签不能让整条收藏消失；删除标签或并发写入时只剔除失效关联。
+    .map((bookmark) => ({
+      ...bookmark,
+      tagIds: orderedTagIds(bookmark.tagIds.filter((tagId) => tagIds.has(tagId)), tags),
+    }))
+    .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
+  return { meta: { schemaVersion: 2, tags }, bookmarks }
+}
+
+function sameSnapshot(left: CollectionSnapshot, right: CollectionSnapshot): boolean {
+  const normalize = (snapshot: CollectionSnapshot) => ({
+    tags: [...snapshot.meta.tags].sort((a, b) => a.id.localeCompare(b.id)),
+    bookmarks: [...snapshot.bookmarks]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((bookmark) => ({ ...bookmark, tagIds: [...bookmark.tagIds].sort() })),
+  })
+  return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
 }
 
 function assertStorageCapacity(items: StorageRecord): void {
   if (Object.keys(items).length > MAX_SYNC_ITEMS) {
     throw new UserFacingError('同步存储已达到项目数量上限。')
   }
-
   let totalBytes = 0
   for (const [key, value] of Object.entries(items)) {
     const bytes = storageItemBytes(key, value)
@@ -167,29 +220,46 @@ function assertStorageCapacity(items: StorageRecord): void {
     }
     totalBytes += bytes
   }
-
   if (totalBytes > SYNC_QUOTA_BYTES) {
     throw new UserFacingError('浏览器同步存储空间不足，无法保存。')
   }
 }
 
+function orderedTagIds(tagIds: Iterable<string>, tags: Tag[]): string[] {
+  const selected = new Set(tagIds)
+  return tags.filter((tag) => selected.has(tag.id)).map((tag) => tag.id)
+}
+
+function tagsEqual(left: string[], right: string[]): boolean {
+  return left.length === right.length && left.every((tagId, index) => tagId === right[index])
+}
+
 export class BookmarkRepository {
   async load(): Promise<CollectionSnapshot> {
     const allItems = await getAllSyncItems()
-    let meta = parseMeta(allItems[STORAGE_KEYS.meta])
+    const current = snapshotFromItems(allItems)
 
-    if (!meta) {
-      meta = createDefaultMeta()
-      await this.writeItem(STORAGE_KEYS.meta, meta, allItems)
+    if (!current) {
+      const legacy = parseLegacySnapshot(allItems)
+      if (legacy) {
+        const migrated = migrateLegacySnapshot(legacy)
+        await this.migrateLegacyStorage(allItems, legacy, migrated)
+        return clone(migrated)
+      }
+      const empty = createEmptyMeta()
+      await this.writeItems({ [STORAGE_KEYS.meta]: empty })
+      return { meta: empty, bookmarks: [] }
     }
 
-    const bookmarks = Object.entries(allItems)
-      .filter(([key, value]) => key.startsWith(STORAGE_KEYS.bookmarkPrefix) && isBookmark(value))
-      .map(([, value]) => value as Bookmark)
-      .filter((bookmark) => meta.groups.some((group) => group.id === bookmark.groupId))
-      .sort((left, right) => left.createdAt - right.createdAt)
-
-    return { meta: clone(meta), bookmarks: clone(bookmarks) }
+    const embeddedTags = parseMeta(allItems[STORAGE_KEYS.meta])?.tags ?? []
+    if (embeddedTags.length > 0) {
+      // 兼容开发期间已经写入过的 v2 meta，并原地转成独立标签项。
+      await this.writeItems({
+        [STORAGE_KEYS.meta]: createEmptyMeta(),
+        ...Object.fromEntries(embeddedTags.map((tag) => [tagKey(tag.id), tag])),
+      })
+    }
+    return clone(current)
   }
 
   subscribe(onChange: (snapshot: CollectionSnapshot) => void, onError?: (error: Error) => void): () => void {
@@ -198,89 +268,98 @@ export class BookmarkRepository {
         onError?.(error instanceof Error ? error : new Error('无法读取同步数据。'))
       })
     }
-
     if (hasChromeSyncStorage()) {
-      const listener = (_changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
-        if (areaName === 'sync') refresh()
+      const listener = (changes: Record<string, chrome.storage.StorageChange>, areaName: string) => {
+        if (areaName === 'sync' && Object.keys(changes).some(isV2LinkDeckKey)) refresh()
       }
       chrome.storage.onChanged.addListener(listener)
       return () => chrome.storage.onChanged.removeListener(listener)
     }
-
     fallbackListeners.add(refresh)
     return () => fallbackListeners.delete(refresh)
   }
 
-  async createGroup(rawName: string): Promise<Group> {
-    const name = validateGroupName(rawName)
-    const { meta } = await this.load()
-
-    if (meta.groups.length >= MAX_GROUPS) {
-      throw new UserFacingError(`最多只能创建 ${MAX_GROUPS} 个分组。`)
+  async createTag(rawName: string): Promise<Tag> {
+    const name = validateTagName(rawName)
+    const snapshot = await this.load()
+    if (snapshot.meta.tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      throw new UserFacingError('已有同名标签。')
     }
+    const now = nextTagTimestamp(snapshot.meta.tags)
+    const tag: Tag = { id: createId(), name, createdAt: now, updatedAt: now }
+    await this.writeItems({ [tagKey(tag.id)]: tag })
+    return tag
+  }
 
-    if (groupNameExists(meta.groups, name)) {
-      throw new UserFacingError('已有同名分组。')
+  async renameTag(tagId: string, rawName: string): Promise<void> {
+    const name = validateTagName(rawName)
+    const snapshot = await this.load()
+    const current = snapshot.meta.tags.find((tag) => tag.id === tagId)
+    if (!current) throw new UserFacingError('找不到这个标签。')
+    if (snapshot.meta.tags.some((tag) => tag.id !== tagId && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+      throw new UserFacingError('已有同名标签。')
+    }
+    await this.writeItems({ [tagKey(tagId)]: { ...current, name, updatedAt: Date.now() } })
+  }
+
+  /** 删除标签及所有关联，但绝不删除关联的收藏。 */
+  async deleteTag(tagId: string): Promise<void> {
+    const snapshot = await this.load()
+    if (!snapshot.meta.tags.some((tag) => tag.id === tagId)) throw new UserFacingError('找不到这个标签。')
+    const now = Date.now()
+    const affected = snapshot.bookmarks
+      .filter((bookmark) => bookmark.tagIds.includes(tagId))
+      .map((bookmark) => ({
+        ...bookmark,
+        tagIds: bookmark.tagIds.filter((id) => id !== tagId),
+        updatedAt: now,
+      }))
+    await this.writeItems(Object.fromEntries(affected.map((bookmark) => [bookmarkKey(bookmark.id), bookmark])))
+    await removeSyncItems([tagKey(tagId)])
+  }
+
+  async createBookmark(draft: BookmarkDraft): Promise<BookmarkSaveResult> {
+    const snapshot = await this.load()
+    const prepared = this.prepareBookmark(snapshot, draft)
+    const duplicate = snapshot.bookmarks.find((bookmark) => hasSameUrl(bookmark.url, prepared.url))
+    if (duplicate) {
+      const tagIds = orderedTagIds([...duplicate.tagIds, ...prepared.tagIds], prepared.tags)
+      const tagsMerged = !tagsEqual(tagIds, duplicate.tagIds)
+      const bookmark = tagsMerged ? { ...duplicate, tagIds, updatedAt: Date.now() } : duplicate
+      await this.writeBookmarkAndTags(bookmark, prepared.newTags, tagsMerged)
+      return { bookmark, created: false, tagsMerged }
     }
 
     const now = Date.now()
-    const group: Group = { id: createId(), name, createdAt: now, updatedAt: now }
-    await this.writeMeta({ ...meta, groups: [...meta.groups, group] })
-    return group
+    const bookmark: Bookmark = {
+      id: createId(),
+      tagIds: prepared.tagIds,
+      title: prepared.title,
+      url: prepared.url,
+      createdAt: now,
+      updatedAt: now,
+    }
+    await this.writeBookmarkAndTags(bookmark, prepared.newTags, true)
+    return { bookmark, created: true, tagsMerged: false }
   }
 
-  async renameGroup(groupId: string, rawName: string): Promise<void> {
-    const name = validateGroupName(rawName)
-    const { meta } = await this.load()
-    const current = meta.groups.find((group) => group.id === groupId)
-
-    if (!current) throw new UserFacingError('找不到这个分组。')
-    if (groupNameExists(meta.groups, name, groupId)) {
-      throw new UserFacingError('已有同名分组。')
-    }
-
-    await this.writeMeta({
-      ...meta,
-      groups: meta.groups.map((group) =>
-        group.id === groupId ? { ...group, name, updatedAt: Date.now() } : group,
-      ),
-    })
-  }
-
-  async deleteGroup(groupId: string): Promise<void> {
-    const snapshot = await this.load()
-    if (snapshot.meta.groups.length <= 1) {
-      throw new UserFacingError('至少需要保留一个分组。')
-    }
-
-    if (!snapshot.meta.groups.some((group) => group.id === groupId)) {
-      throw new UserFacingError('找不到这个分组。')
-    }
-
-    if (snapshot.bookmarks.some((bookmark) => bookmark.groupId === groupId)) {
-      throw new UserFacingError('分组内还有网站，请先移动或删除它们。')
-    }
-
-    await this.writeMeta({
-      ...snapshot.meta,
-      groups: snapshot.meta.groups.filter((group) => group.id !== groupId),
-    })
-  }
-
-  async createBookmark(draft: BookmarkDraft): Promise<Bookmark> {
-    const snapshot = await this.load()
-    const bookmark = this.buildBookmark(draft, snapshot)
-    await this.writeItem(bookmarkKey(bookmark.id), bookmark)
-    return bookmark
-  }
-
-  async updateBookmark(bookmarkId: string, draft: BookmarkDraft): Promise<void> {
+  async updateBookmark(bookmarkId: string, draft: BookmarkDraft): Promise<Bookmark> {
     const snapshot = await this.load()
     const existing = snapshot.bookmarks.find((bookmark) => bookmark.id === bookmarkId)
     if (!existing) throw new UserFacingError('找不到这个网站。')
-
-    const updated = this.buildBookmark(draft, snapshot, existing)
-    await this.writeItem(bookmarkKey(bookmarkId), updated)
+    const prepared = this.prepareBookmark(snapshot, draft)
+    if (snapshot.bookmarks.some((bookmark) => bookmark.id !== bookmarkId && hasSameUrl(bookmark.url, prepared.url))) {
+      throw new UserFacingError('该网址已收藏，请编辑现有条目。')
+    }
+    const bookmark: Bookmark = {
+      ...existing,
+      tagIds: prepared.tagIds,
+      title: prepared.title,
+      url: prepared.url,
+      updatedAt: Date.now(),
+    }
+    await this.writeBookmarkAndTags(bookmark, prepared.newTags, true)
+    return bookmark
   }
 
   async deleteBookmark(bookmarkId: string): Promise<void> {
@@ -293,178 +372,189 @@ export class BookmarkRepository {
 
   async importSnapshot(imported: CollectionSnapshot, mode: ImportMode): Promise<ImportSummary> {
     const current = await this.load()
-    const { snapshot, summary } = mode === 'replace'
-      ? {
-          snapshot: clone(imported),
-          summary: {
-            groupsAdded: imported.meta.groups.length,
-            bookmarksAdded: imported.bookmarks.length,
-            bookmarksSkipped: 0,
-          },
-        }
-      : this.mergeSnapshots(current, imported)
-
-    await this.replaceSnapshot(snapshot)
+    if (mode === 'replace') {
+      await this.replaceSnapshot(clone(imported), current)
+      return { tagsAdded: imported.meta.tags.length, bookmarksAdded: imported.bookmarks.length, bookmarksMerged: 0 }
+    }
+    const { snapshot, summary } = this.mergeSnapshots(current, imported)
+    await this.replaceSnapshot(snapshot, current)
     return summary
   }
 
-  private buildBookmark(
-    draft: BookmarkDraft,
-    snapshot: CollectionSnapshot,
-    existing?: Bookmark,
-  ): Bookmark {
+  private prepareBookmark(snapshot: CollectionSnapshot, draft: BookmarkDraft): {
+    title: string
+    url: string
+    tagIds: string[]
+    tags: Tag[]
+    newTags: Tag[]
+  } {
     const url = normalizeUrl(draft.url)
     const title = validateBookmarkTitle(draft.title, url)
-
-    if (!snapshot.meta.groups.some((group) => group.id === draft.groupId)) {
-      throw new UserFacingError('请选择有效的分组。')
+    const selected = new Set(draft.tagIds)
+    if ([...selected].some((tagId) => !snapshot.meta.tags.some((tag) => tag.id === tagId))) {
+      throw new UserFacingError('请选择有效的标签。')
     }
 
-    const duplicate = snapshot.bookmarks.some(
-      (bookmark) =>
-        bookmark.id !== existing?.id &&
-        bookmark.groupId === draft.groupId &&
-        hasSameUrl(bookmark.url, url),
-    )
-    if (duplicate) {
-      throw new UserFacingError('这个分组已收藏过该网址。')
+    const tags = clone(snapshot.meta.tags)
+    const newTags: Tag[] = []
+    const names = new Map(tags.map((tag) => [tag.name.toLocaleLowerCase(), tag]))
+    for (const rawName of draft.newTagNames) {
+      const name = validateTagName(rawName)
+      const existing = names.get(name.toLocaleLowerCase())
+      if (existing) {
+        selected.add(existing.id)
+        continue
+      }
+      const now = nextTagTimestamp(tags)
+      const tag: Tag = { id: createId(), name, createdAt: now, updatedAt: now }
+      tags.push(tag)
+      newTags.push(tag)
+      names.set(name.toLocaleLowerCase(), tag)
+      selected.add(tag.id)
     }
-
-    const now = Date.now()
     return {
-      id: existing?.id ?? createId(),
-      groupId: draft.groupId,
       title,
       url,
-      createdAt: existing?.createdAt ?? now,
-      updatedAt: now,
+      tagIds: orderedTagIds(selected, tags),
+      tags,
+      newTags,
     }
   }
 
-  private mergeSnapshots(
-    current: CollectionSnapshot,
-    imported: CollectionSnapshot,
-  ): { snapshot: CollectionSnapshot; summary: ImportSummary } {
-    const groups = clone(current.meta.groups)
-    const bookmarks = clone(current.bookmarks)
-    const groupsByName = new Map(
-      groups.map((group) => [group.name.toLocaleLowerCase(), group]),
-    )
-    const importedGroupIds = new Map<string, string>()
-    let groupsAdded = 0
+  private async writeBookmarkAndTags(
+    bookmark: Bookmark,
+    newTags: Tag[],
+    bookmarkChanged: boolean,
+  ): Promise<void> {
+    if (newTags.length === 0 && !bookmarkChanged) return
+    const items: StorageRecord = {}
+    newTags.forEach((tag) => {
+      items[tagKey(tag.id)] = tag
+    })
+    if (bookmarkChanged) items[bookmarkKey(bookmark.id)] = bookmark
+    await this.writeItems(items)
+  }
 
-    for (const importedGroup of imported.meta.groups) {
-      const existing = groupsByName.get(importedGroup.name.toLocaleLowerCase())
+  private mergeSnapshots(current: CollectionSnapshot, imported: CollectionSnapshot): {
+    snapshot: CollectionSnapshot
+    summary: ImportSummary
+  } {
+    const tags = clone(current.meta.tags)
+    const tagsByName = new Map(tags.map((tag) => [tag.name.toLocaleLowerCase(), tag]))
+    const importedTagIds = new Map<string, string>()
+    let tagsAdded = 0
+
+    for (const importedTag of imported.meta.tags) {
+      const existing = tagsByName.get(importedTag.name.toLocaleLowerCase())
       if (existing) {
-        importedGroupIds.set(importedGroup.id, existing.id)
+        importedTagIds.set(importedTag.id, existing.id)
         continue
       }
-
-      const group = { ...clone(importedGroup), id: createId() }
-      groups.push(group)
-      groupsByName.set(group.name.toLocaleLowerCase(), group)
-      importedGroupIds.set(importedGroup.id, group.id)
-      groupsAdded += 1
+      const tag = { ...clone(importedTag), id: createId() }
+      tags.push(tag)
+      tagsByName.set(tag.name.toLocaleLowerCase(), tag)
+      importedTagIds.set(importedTag.id, tag.id)
+      tagsAdded += 1
     }
 
-    if (groups.length > MAX_GROUPS) {
-      throw new UserFacingError(`合并后分组不能超过 ${MAX_GROUPS} 个。`)
-    }
-
-    const urlsByGroup = new Map<string, Set<string>>()
-    for (const bookmark of bookmarks) {
-      const urls = urlsByGroup.get(bookmark.groupId) ?? new Set<string>()
-      urls.add(normalizeUrl(bookmark.url))
-      urlsByGroup.set(bookmark.groupId, urls)
-    }
-
+    const bookmarks = clone(current.bookmarks)
+    const byUrl = new Map(bookmarks.map((bookmark) => [normalizeUrl(bookmark.url), bookmark]))
     let bookmarksAdded = 0
-    let bookmarksSkipped = 0
+    let bookmarksMerged = 0
     for (const importedBookmark of imported.bookmarks) {
-      const groupId = importedGroupIds.get(importedBookmark.groupId)
-      if (!groupId) throw new UserFacingError('导入数据引用了不存在的分组。')
-
-      const normalizedUrl = normalizeUrl(importedBookmark.url)
-      const urls = urlsByGroup.get(groupId) ?? new Set<string>()
-      if (urls.has(normalizedUrl)) {
-        bookmarksSkipped += 1
+      const tagIds = orderedTagIds(
+        importedBookmark.tagIds.map((tagId) => importedTagIds.get(tagId)).filter((tagId): tagId is string => Boolean(tagId)),
+        tags,
+      )
+      const existing = byUrl.get(normalizeUrl(importedBookmark.url))
+      if (existing) {
+        existing.tagIds = orderedTagIds([...existing.tagIds, ...tagIds], tags)
+        existing.updatedAt = Math.max(existing.updatedAt, importedBookmark.updatedAt)
+        bookmarksMerged += 1
         continue
       }
-
-      bookmarks.push({
+      const bookmark = {
         ...clone(importedBookmark),
         id: createId(),
-        groupId,
-        url: normalizedUrl,
-      })
-      urls.add(normalizedUrl)
-      urlsByGroup.set(groupId, urls)
+        tagIds,
+        url: normalizeUrl(importedBookmark.url),
+      }
+      bookmarks.push(bookmark)
+      byUrl.set(bookmark.url, bookmark)
       bookmarksAdded += 1
     }
-
     return {
-      snapshot: { meta: { schemaVersion: 1, groups }, bookmarks },
-      summary: { groupsAdded, bookmarksAdded, bookmarksSkipped },
+      snapshot: { meta: { schemaVersion: 2, tags }, bookmarks },
+      summary: { tagsAdded, bookmarksAdded, bookmarksMerged },
     }
   }
 
-  private async replaceSnapshot(snapshot: CollectionSnapshot): Promise<void> {
-    const currentItems = await getAllSyncItems()
-    const previousLinkDeckItems = Object.fromEntries(
-      Object.entries(currentItems).filter(([key]) => isLinkDeckKey(key)),
-    )
+  private async migrateLegacyStorage(
+    allItems: StorageRecord,
+    legacy: LegacyCollectionSnapshot,
+    migrated: CollectionSnapshot,
+  ): Promise<void> {
+    const legacyItems = Object.fromEntries(Object.entries(allItems).filter(([key]) => isLegacyLinkDeckKey(key)))
     const preservedItems = Object.fromEntries(
-      Object.entries(currentItems).filter(([key]) => !isLinkDeckKey(key)),
+      Object.entries(allItems).filter(([key]) => !isLegacyLinkDeckKey(key) && !isV2LinkDeckKey(key)),
     )
-    const nextLinkDeckItems = snapshotItems(snapshot)
-    assertStorageCapacity({ ...preservedItems, ...nextLinkDeckItems })
-
-    const previousBookmarkKeys = Object.keys(currentItems).filter((key) =>
-      key.startsWith(STORAGE_KEYS.bookmarkPrefix),
-    )
-
+    const nextItems = snapshotItems(migrated)
+    assertStorageCapacity({ ...preservedItems, ...nextItems })
+    await saveMigrationBackup(legacy)
     try {
-      if (previousBookmarkKeys.length > 0) await removeSyncItems(previousBookmarkKeys)
-      await setSyncItems(nextLinkDeckItems)
-    } catch {
+      await removeSyncItems(Object.keys(legacyItems))
+      await setSyncItems(nextItems)
+    } catch (error) {
       try {
-        const afterFailure = await getAllSyncItems()
-        const failedKeys = Object.keys(afterFailure).filter(isLinkDeckKey)
-        if (failedKeys.length > 0) await removeSyncItems(failedKeys)
-        await setSyncItems(previousLinkDeckItems)
+        await removeSyncItems(Object.keys(nextItems))
+        await setSyncItems(legacyItems)
       } catch {
-        throw new UserFacingError('导入失败，且无法自动恢复原数据，请重新导入之前的备份。')
+        // 原始写入错误更有助于用户判断同步存储是否可用。
       }
-      throw new UserFacingError('导入失败，原数据已恢复，请稍后重试。')
+      throw error
     }
   }
 
-  private async writeMeta(meta: LinkDeckMeta): Promise<void> {
-    await this.writeItem(STORAGE_KEYS.meta, meta)
+  private async writeItems(items: StorageRecord): Promise<void> {
+    if (Object.keys(items).length === 0) return
+    const current = await getAllSyncItems()
+    assertStorageCapacity({ ...current, ...items })
+    await setSyncItems(items)
   }
 
-  private async writeItem(key: string, value: unknown, knownItems?: StorageRecord): Promise<void> {
-    const itemBytes = storageItemBytes(key, value)
-    if (itemBytes > SYNC_QUOTA_BYTES_PER_ITEM) {
-      throw new UserFacingError('单条数据太大，无法同步保存。')
+  private async replaceSnapshot(
+    snapshot: CollectionSnapshot,
+    expectedCurrent: CollectionSnapshot,
+  ): Promise<void> {
+    const currentItems = await getAllSyncItems()
+    const currentSnapshot = snapshotFromItems(currentItems)
+    if (!currentSnapshot || !sameSnapshot(currentSnapshot, expectedCurrent)) {
+      throw new UserFacingError('数据在替换期间发生变化，请重试。')
     }
-
-    const allItems = knownItems ?? (await getAllSyncItems())
-    const exists = Object.prototype.hasOwnProperty.call(allItems, key)
-    if (!exists && Object.keys(allItems).length >= MAX_SYNC_ITEMS) {
-      throw new UserFacingError('同步存储已达到项目数量上限。')
-    }
-
-    const currentBytes = await getSyncBytesInUse()
-    const previousBytes = exists ? storageItemBytes(key, allItems[key]) : 0
-    if (currentBytes - previousBytes + itemBytes > SYNC_QUOTA_BYTES) {
-      throw new UserFacingError('浏览器同步存储空间不足，无法保存。')
-    }
-
+    const previous = Object.fromEntries(Object.entries(currentItems).filter(([key]) => isV2LinkDeckKey(key)))
+    const preserved = Object.fromEntries(Object.entries(currentItems).filter(([key]) => !isV2LinkDeckKey(key)))
+    const next = snapshotItems(snapshot)
+    assertStorageCapacity({ ...preserved, ...next })
+    const staleKeys = Object.keys(previous).filter(
+      (key) => key !== STORAGE_KEYS.meta && !Object.prototype.hasOwnProperty.call(next, key),
+    )
+    const addedKeys = Object.keys(next).filter(
+      (key) => !Object.prototype.hasOwnProperty.call(previous, key),
+    )
     try {
-      await setSyncItems({ [key]: value })
-    } catch {
-      throw new UserFacingError('保存失败，请检查浏览器同步设置后重试。')
+      // meta 始终保留，订阅者只会看到旧快照的部分收藏，不会误触发空库初始化。
+      await removeSyncItems(staleKeys)
+      await setSyncItems(next)
+    } catch (error) {
+      try {
+        await setSyncItems(previous)
+        await removeSyncItems(addedKeys)
+      } catch (rollbackError) {
+        throw new UserFacingError(
+          `替换失败，且无法自动恢复原数据：${rollbackError instanceof Error ? rollbackError.message : '未知错误'}`,
+        )
+      }
+      throw error
     }
   }
 }

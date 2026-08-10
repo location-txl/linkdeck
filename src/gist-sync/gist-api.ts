@@ -92,7 +92,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 function requiredSyncMetadata(value: unknown): GistSyncMetadata {
   if (!isRecord(value)) throw new GistApiError('该 Gist 不是 LinkDeck 同步文件。')
   if (
-    value.protocolVersion !== 1 ||
+    (value.protocolVersion !== 1 && value.protocolVersion !== 2) ||
     typeof value.revisionId !== 'string' ||
     !value.revisionId ||
     (value.parentRevisionId !== null && typeof value.parentRevisionId !== 'string') ||
@@ -103,7 +103,7 @@ function requiredSyncMetadata(value: unknown): GistSyncMetadata {
   }
 
   return {
-    protocolVersion: 1,
+    protocolVersion: value.protocolVersion,
     revisionId: value.revisionId,
     parentRevisionId: value.parentRevisionId,
     writtenAt: new Date(value.writtenAt).toISOString(),
@@ -137,7 +137,7 @@ export function createGistDocument(
   return {
     ...backup,
     sync: {
-      protocolVersion: 1,
+      protocolVersion: 2,
       revisionId: createRevisionId(),
       parentRevisionId,
       writtenAt: now.toISOString(),

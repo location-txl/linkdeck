@@ -53,13 +53,17 @@ describe('Gist service worker', () => {
     await vi.advanceTimersByTimeAsync(500)
     expect(handle).toHaveBeenCalledWith({ type: 'gist-sync:sync-now' })
 
+    storageListener?.({ [`${STORAGE_KEYS.tagPrefix}work`]: { newValue: {} } }, 'sync')
+    await vi.advanceTimersByTimeAsync(500)
+    expect(handle).toHaveBeenCalledTimes(2)
+
     storageListener?.({ 'unrelated:key': { newValue: {} } }, 'sync')
     await vi.advanceTimersByTimeAsync(500)
-    expect(handle).toHaveBeenCalledTimes(1)
+    expect(handle).toHaveBeenCalledTimes(2)
 
     startupListener?.()
     await Promise.resolve()
-    expect(handle).toHaveBeenCalledTimes(2)
+    expect(handle).toHaveBeenCalledTimes(3)
 
     const respond = vi.fn()
     expect(messageListener?.({ type: 'gist-sync:get-status' }, {}, respond)).toBe(true)

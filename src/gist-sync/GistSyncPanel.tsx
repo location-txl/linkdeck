@@ -155,8 +155,8 @@ export function GistSyncPanel({ onStateChange }: GistSyncPanelProps) {
       {preview ? (
         <div className="gist-sync__preview">
           <p>
-            已读取 Gist：本机 {preview.local.groups} 个分组、{preview.local.bookmarks} 个网站；
-            远端 {preview.remote.groups} 个分组、{preview.remote.bookmarks} 个网站。
+            已读取 Gist：本机 {preview.local.tags} 个标签、{preview.local.bookmarks} 个网站；
+            远端 {preview.remote.tags} 个标签、{preview.remote.bookmarks} 个网站。
           </p>
           <fieldset className="import-modes">
             <legend>选择首次绑定方式</legend>
@@ -196,7 +196,7 @@ export function GistSyncPanel({ onStateChange }: GistSyncPanelProps) {
               <span className="import-mode__radio" aria-hidden="true" />
               <span>
                 <strong>智能合并</strong>
-                <small>同名分组归并，重复网址保留本机内容。</small>
+                <small>同名标签归并，重复网址保留本机内容并合并标签。</small>
               </span>
             </label>
           </fieldset>

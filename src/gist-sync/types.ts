@@ -6,7 +6,7 @@ export const GIST_SYNC_STORAGE_KEY = 'linkdeck:gist-sync'
 
 /** Gist 文件中用于识别同步版本的元数据。 */
 export type GistSyncMetadata = {
-  protocolVersion: 1
+  protocolVersion: 1 | 2
   revisionId: string
   parentRevisionId: string | null
   writtenAt: string
@@ -67,6 +67,6 @@ export type ConflictChoice = 'local' | 'remote'
 export type GistBindingPreview = {
   gistId: string
   gistUrl: string
-  local: { groups: number; bookmarks: number }
-  remote: { groups: number; bookmarks: number }
+  local: { tags: number; bookmarks: number }
+  remote: { tags: number; bookmarks: number }
 }

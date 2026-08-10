@@ -88,7 +88,7 @@ export function DataTransferModal({
             <div>
               <strong>{selected.fileName}</strong>
               <span>
-                {selected.backup.data.meta.groups.length} 个分组 · {selected.backup.data.bookmarks.length} 个网站
+                {selected.backup.data.meta.tags.length} 个标签 · {selected.backup.data.bookmarks.length} 个网站
               </span>
             </div>
             <button
@@ -113,7 +113,7 @@ export function DataTransferModal({
               <span className="import-mode__radio" aria-hidden="true" />
               <span>
                 <strong>智能合并</strong>
-                <small>保留当前数据；同名分组合并，重复网址跳过。</small>
+                <small>保留当前数据；同名标签归并，重复网址合并标签。</small>
               </span>
             </label>
             <label className={mode === 'replace' ? 'import-mode import-mode--danger import-mode--active' : 'import-mode import-mode--danger'}>
@@ -127,7 +127,7 @@ export function DataTransferModal({
               <span className="import-mode__radio" aria-hidden="true" />
               <span>
                 <strong>完整替换</strong>
-                <small>清除当前 {snapshot.meta.groups.length} 个分组和 {snapshot.bookmarks.length} 个网站。</small>
+                <small>清除当前 {snapshot.meta.tags.length} 个标签和 {snapshot.bookmarks.length} 个网站。</small>
               </span>
             </label>
           </fieldset>
@@ -158,8 +158,8 @@ export function DataTransferModal({
         <div className="data-transfer">
           <div className="data-transfer__summary">
             <span>
-              <b>{snapshot.meta.groups.length}</b>
-              个分组
+              <b>{snapshot.meta.tags.length}</b>
+              个标签
             </span>
             <i />
             <span>
@@ -175,7 +175,7 @@ export function DataTransferModal({
               </span>
               <span>
                 <strong>导出 JSON</strong>
-                <small>下载全部分组和收藏，留作备份。</small>
+                <small>下载全部标签和收藏，留作备份。</small>
               </span>
               <Icon name="chevron-right" size={16} />
             </button>

@@ -24,7 +24,7 @@ LinkDeck 是一个面向 Chrome 和 Edge 的 Manifest V3 网址收藏插件。
 ## 数据和隐私
 
 - 收藏数据存放在 `chrome.storage.sync`；浏览器是否跨设备同步取决于账号和同步设置。
-- 可选的 Gist 同步会把全部分组和收藏上传到用户自己的 GitHub secret Gist，用于 Chrome 与 Edge 等不同浏览器之间同步；未连接 Gist 时不会请求 GitHub。
+- 可选的 Gist 同步会把全部标签和收藏上传到用户自己的 GitHub secret Gist，用于 Chrome 与 Edge 等不同浏览器之间同步；未连接 Gist 时不会请求 GitHub。
 - Gist 细粒度访问令牌仅保存在当前浏览器的 `chrome.storage.local`，不会参与浏览器同步、JSON 导出或日志。令牌需要 `Gists: write` 权限。
 - 点击“收藏当前页”时，扩展仅在这次用户主动操作中读取当前标签的标题和网址。
 - 图标通过 `https://favicon.im/{hostname}` 按域名加载，完整路径、查询参数和收藏标题不会发送给该服务；请求仍会让该服务获知域名与用户 IP。
@@ -34,11 +34,11 @@ LinkDeck 是一个面向 Chrome 和 Edge 的 Manifest V3 网址收藏插件。
 
 ## JSON 备份
 
-点击顶部的“数据管理”可以导出或导入 LinkDeck JSON 备份。备份包含全部分组和收藏，不包含当前分组、搜索词等界面偏好。
+点击顶部的“数据管理”可以导出或导入 LinkDeck JSON 备份。备份包含全部标签和收藏，不包含当前标签筛选、搜索词等界面偏好。
 
-- “智能合并”保留现有数据，按分组名称合并，并跳过同一分组中的重复网址。
-- “完整替换”会在确认后使用备份内容覆盖当前分组和收藏。
-- 导入文件只在扩展本地读取和校验，不会上传到网络；仅支持 LinkDeck 自身导出的 `formatVersion: 1` JSON 文件。
+- “智能合并”保留现有数据，按标签名称归并，并合并相同网址的标签。
+- “完整替换”会在确认后使用备份内容覆盖当前标签和收藏。
+- 导入文件只在扩展本地读取和校验，不会上传到网络；支持 LinkDeck 的 `formatVersion: 1` 和 `formatVersion: 2` JSON 文件。
 
 ## Gist 同步
 

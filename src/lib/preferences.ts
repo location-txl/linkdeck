@@ -1,24 +1,39 @@
-import { STORAGE_KEYS } from '../types'
+import { STORAGE_KEYS, type TagFilter } from '../types'
 
 function hasChromeLocalStorage(): boolean {
   return typeof chrome !== 'undefined' && Boolean(chrome.storage?.local)
 }
 
-export async function getSelectedGroupId(): Promise<string | undefined> {
-  if (hasChromeLocalStorage()) {
-    const value = await chrome.storage.local.get(STORAGE_KEYS.selectedGroup)
-    const selectedGroup = value[STORAGE_KEYS.selectedGroup]
-    return typeof selectedGroup === 'string' ? selectedGroup : undefined
+function normalizeFilter(value: unknown): TagFilter | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as Partial<TagFilter>
+  if (!Array.isArray(candidate.tagIds) || !candidate.tagIds.every((tagId) => typeof tagId === 'string')) {
+    return undefined
   }
-
-  return window.localStorage.getItem(STORAGE_KEYS.selectedGroup) ?? undefined
+  if (typeof candidate.untaggedOnly !== 'boolean') return undefined
+  return { tagIds: [...new Set(candidate.tagIds)], untaggedOnly: candidate.untaggedOnly }
 }
 
-export async function setSelectedGroupId(groupId: string): Promise<void> {
+/** 读取多标签筛选，并将旧版单分组选择迁移为单标签筛选。 */
+export async function getTagFilter(): Promise<TagFilter> {
   if (hasChromeLocalStorage()) {
-    await chrome.storage.local.set({ [STORAGE_KEYS.selectedGroup]: groupId })
+    const values = await chrome.storage.local.get([STORAGE_KEYS.tagFilter, STORAGE_KEYS.legacySelectedGroup])
+    const saved = normalizeFilter(values[STORAGE_KEYS.tagFilter])
+    if (saved) return saved
+    const legacyTagId = values[STORAGE_KEYS.legacySelectedGroup]
+    return typeof legacyTagId === 'string' ? { tagIds: [legacyTagId], untaggedOnly: false } : { tagIds: [], untaggedOnly: false }
+  }
+  const saved = normalizeFilter(JSON.parse(window.localStorage.getItem(STORAGE_KEYS.tagFilter) ?? 'null'))
+  if (saved) return saved
+  const legacyTagId = window.localStorage.getItem(STORAGE_KEYS.legacySelectedGroup)
+  return legacyTagId ? { tagIds: [legacyTagId], untaggedOnly: false } : { tagIds: [], untaggedOnly: false }
+}
+
+export async function setTagFilter(filter: TagFilter): Promise<void> {
+  const value = { tagIds: [...new Set(filter.tagIds)], untaggedOnly: filter.untaggedOnly }
+  if (hasChromeLocalStorage()) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.tagFilter]: value })
     return
   }
-
-  window.localStorage.setItem(STORAGE_KEYS.selectedGroup, groupId)
+  window.localStorage.setItem(STORAGE_KEYS.tagFilter, JSON.stringify(value))
 }

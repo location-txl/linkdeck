@@ -12,10 +12,11 @@ describe('Chrome tab integration', () => {
   })
 
   it('pre-fills a draft from the active page', async () => {
-    await expect(getCurrentPageDraft('group-1')).resolves.toEqual({
+    await expect(getCurrentPageDraft()).resolves.toEqual({
       title: 'Example documentation',
       url: 'https://example.com/docs?private=1',
-      groupId: 'group-1',
+      tagIds: [],
+      newTagNames: [],
     })
   })
 
@@ -33,4 +34,3 @@ describe('Chrome tab integration', () => {
     })
   })
 })
-

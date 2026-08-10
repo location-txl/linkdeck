@@ -12,13 +12,10 @@ import {
 import { GIST_SYNC_FILE_NAME } from './types'
 
 const snapshot: CollectionSnapshot = {
-  meta: {
-    schemaVersion: 1,
-    groups: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 2 }],
-  },
+  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 2 }] },
   bookmarks: [{
     id: 'github',
-    groupId: 'work',
+    tagIds: ['work'],
     title: 'GitHub',
     url: 'https://github.com/',
     createdAt: 3,
@@ -63,6 +60,22 @@ describe('Gist API', () => {
     const body = JSON.parse(request.body as string)
     expect(body.public).toBe(false)
     expect(parseGistDocument(body.files[GIST_SYNC_FILE_NAME].content).data).toEqual(snapshot)
+    expect(parseGistDocument(body.files[GIST_SYNC_FILE_NAME].content).sync.protocolVersion).toBe(2)
+  })
+
+  it('accepts and upgrades a legacy v1 document in memory', () => {
+    const legacy = JSON.stringify({
+      app: 'LinkDeck', formatVersion: 1, exportedAt: '2026-08-09T08:00:00.000Z',
+      data: {
+        meta: { schemaVersion: 1, groups: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 2 }] },
+        bookmarks: [{ id: 'github', groupId: 'work', title: 'GitHub', url: 'https://github.com/', createdAt: 3, updatedAt: 4 }],
+      },
+      sync: { protocolVersion: 1, revisionId: 'legacy', parentRevisionId: null, writtenAt: '2026-08-09T08:00:00.000Z' },
+    })
+    expect(parseGistDocument(legacy)).toMatchObject({
+      sync: { protocolVersion: 1 },
+      data: { meta: { schemaVersion: 2, tags: [{ id: 'work' }] }, bookmarks: [{ tagIds: ['work'] }] },
+    })
   })
 
   it('reads the configured file and rejects incomplete Gists', async () => {

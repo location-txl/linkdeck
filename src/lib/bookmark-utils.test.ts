@@ -4,7 +4,7 @@ import {
   getHostname,
   makeFaviconUrl,
   normalizeUrl,
-  validateGroupName,
+  validateTagName,
 } from './bookmark-utils'
 
 describe('bookmark utilities', () => {
@@ -25,8 +25,8 @@ describe('bookmark utilities', () => {
     )
   })
 
-  it('trims and validates group names', () => {
-    expect(validateGroupName('  工作  ')).toBe('工作')
-    expect(() => validateGroupName('')).toThrow('请输入分组名称。')
+  it('trims and validates tag names', () => {
+    expect(validateTagName('  工作  ')).toBe('工作')
+    expect(() => validateTagName('')).toThrow('请输入标签名称。')
   })
 })

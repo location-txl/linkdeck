@@ -1,5 +1,6 @@
 import { bookmarkRepository } from '../lib/bookmark-repository'
 import { STORAGE_KEYS, type CollectionSnapshot } from '../types'
+import { parseBackupJson } from '../data-transfer/data-transfer'
 import {
   createGist,
   createGistDocument,
@@ -41,6 +42,42 @@ function isStoredState(value: unknown): value is StoredGistSyncState {
   return ['disconnected', 'syncing', 'synced', 'error', 'conflict'].includes(candidate.status ?? '')
 }
 
+/** 将 local storage 中遗留的 v1 同步基线和冲突快照转换为当前标签格式。 */
+function migrateStoredSnapshot(value: unknown): CollectionSnapshot | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const snapshot = value as { meta?: { schemaVersion?: unknown } }
+  const formatVersion = snapshot.meta?.schemaVersion === 1 ? 1 : snapshot.meta?.schemaVersion === 2 ? 2 : undefined
+  if (!formatVersion) return undefined
+  try {
+    return parseBackupJson(JSON.stringify({
+      app: 'LinkDeck',
+      formatVersion,
+      exportedAt: '1970-01-01T00:00:00.000Z',
+      data: value,
+    })).data
+  } catch {
+    return undefined
+  }
+}
+
+function normalizeStoredState(value: unknown): StoredGistSyncState {
+  if (!isStoredState(value)) return defaultState()
+  const state = clone(value)
+  if (state.baseline) {
+    const snapshot = migrateStoredSnapshot(state.baseline.snapshot)
+    if (snapshot) state.baseline.snapshot = snapshot
+    else state.baseline = undefined
+  }
+  if (state.conflict) {
+    const base = migrateStoredSnapshot(state.conflict.base)
+    const local = migrateStoredSnapshot(state.conflict.local)
+    const remote = migrateStoredSnapshot(state.conflict.remote)
+    if (base && local && remote) state.conflict = { ...state.conflict, base, local, remote }
+    else state.conflict = undefined
+  }
+  return state
+}
+
 function defaultState(): StoredGistSyncState {
   return { status: 'disconnected' }
 }
@@ -49,10 +86,10 @@ async function readStoredState(): Promise<StoredGistSyncState> {
   if (hasChromeLocalStorage()) {
     const stored = await chrome.storage.local.get(GIST_SYNC_STORAGE_KEY) as StorageRecord
     const value = stored[GIST_SYNC_STORAGE_KEY]
-    return isStoredState(value) ? clone(value) : defaultState()
+    return normalizeStoredState(value)
   }
   const value = fallbackStorage.get(GIST_SYNC_STORAGE_KEY)
-  return isStoredState(value) ? clone(value) : defaultState()
+  return normalizeStoredState(value)
 }
 
 async function writeStoredState(state: StoredGistSyncState): Promise<void> {
@@ -85,9 +122,9 @@ function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Gist 同步发生未知错误。'
 }
 
-function summary(snapshot: CollectionSnapshot): { groups: number; bookmarks: number } {
+function summary(snapshot: CollectionSnapshot): { tags: number; bookmarks: number } {
   return {
-    groups: snapshot.meta.groups.length,
+    tags: snapshot.meta.tags.length,
     bookmarks: snapshot.bookmarks.length,
   }
 }
@@ -107,7 +144,8 @@ function writeErrorState(
 /** 判断 storage.sync 的变更是否会影响 LinkDeck 收藏快照。 */
 export function hasLinkDeckStorageChange(changes: Record<string, unknown>): boolean {
   return Object.keys(changes).some(
-    (key) => key === STORAGE_KEYS.meta || key.startsWith(STORAGE_KEYS.bookmarkPrefix),
+    (key) => key === STORAGE_KEYS.meta || key.startsWith(STORAGE_KEYS.tagPrefix) ||
+      key.startsWith(STORAGE_KEYS.bookmarkPrefix),
   )
 }
 
@@ -214,12 +252,21 @@ export class GistSyncService {
     const credentials: GistCredentials = { token, gistId: remote.id, gistUrl: remote.url }
 
     if (mode === 'remote') {
+      if (!sameSnapshot(local, await bookmarkRepository.load())) {
+        throw new Error('绑定期间本机数据已变化，请重新确认同步方式。')
+      }
       await bookmarkRepository.importSnapshot(remote.document.data, 'replace')
-      return this.saveSynced(credentials, remote, remote.document.data)
+      const upgraded = await this.upgradeLegacyRemote(credentials, remote, remote.document.data)
+      return this.saveSynced(credentials, upgraded, remote.document.data)
     }
 
     const next = mode === 'merge' ? mergeInitialSnapshots(local, remote.document.data) : local
-    if (!sameSnapshot(next, local)) await bookmarkRepository.importSnapshot(next, 'replace')
+    if (!sameSnapshot(next, local)) {
+      if (!sameSnapshot(local, await bookmarkRepository.load())) {
+        throw new Error('绑定期间本机数据已变化，请重新确认同步方式。')
+      }
+      await bookmarkRepository.importSnapshot(next, 'replace')
+    }
     const pushed = await this.pushSnapshot(credentials, next, remote)
     if (!pushed.verified) {
       return this.saveConflict(
@@ -248,7 +295,8 @@ export class GistSyncService {
     const baseline = stored.baseline
 
     if (sameSnapshot(local, remote.document.data)) {
-      return this.saveSynced(stored.credentials, remote, local)
+      const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, local)
+      return this.saveSynced(stored.credentials, upgraded, local)
     }
 
     const localChanged = !sameSnapshot(local, baseline.snapshot)
@@ -258,7 +306,8 @@ export class GistSyncService {
       const interrupted = await this.guardLocalBeforeReplace(local, baseline.snapshot, remote, attempt)
       if (interrupted) return interrupted
       await bookmarkRepository.importSnapshot(remote.document.data, 'replace')
-      return this.saveSynced(stored.credentials, remote, remote.document.data)
+      const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, remote.document.data)
+      return this.saveSynced(stored.credentials, upgraded, remote.document.data)
     }
 
     if (localChanged && !remoteChanged) {
@@ -276,7 +325,8 @@ export class GistSyncService {
     }
 
     if (!localChanged && !remoteChanged) {
-      return this.saveSynced(stored.credentials, remote, local)
+      const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, local)
+      return this.saveSynced(stored.credentials, upgraded, local)
     }
 
     const merged = mergeThreeWaySnapshots(baseline.snapshot, local, remote.document.data)
@@ -366,6 +416,19 @@ export class GistSyncService {
     }
 
     const resolved = mergeThreeWaySnapshots(conflict.base, local, remote.document.data, choice)
+    const latestLocal = await bookmarkRepository.load()
+    if (!sameSnapshot(local, latestLocal)) {
+      const recalculated = mergeThreeWaySnapshots(conflict.base, latestLocal, remote.document.data)
+      return this.saveConflict(
+        conflict.base,
+        latestLocal,
+        remote.document.data,
+        recalculated.conflicts.length > 0
+          ? recalculated.conflicts
+          : ['冲突处理期间本机数据发生变化，请重新选择来源。'],
+        remote.document.sync.revisionId,
+      )
+    }
     await bookmarkRepository.importSnapshot(resolved.snapshot, 'replace')
     const pushed = await this.pushSnapshot(stored.credentials, resolved.snapshot, remote)
     if (!pushed.verified) {
@@ -394,6 +457,20 @@ export class GistSyncService {
         verified.document.sync.revisionId === document.sync.revisionId &&
         sameSnapshot(verified.document.data, snapshot),
     }
+  }
+
+  /** 首次读取旧协议 Gist 后立即写回 v2，阻止旧客户端继续覆盖标签数据。 */
+  private async upgradeLegacyRemote(
+    credentials: GistCredentials,
+    remote: RemoteGist,
+    snapshot: CollectionSnapshot,
+  ): Promise<RemoteGist> {
+    if (remote.document.sync.protocolVersion === 2) return remote
+    const pushed = await this.pushSnapshot(credentials, snapshot, remote)
+    if (!pushed.verified) {
+      throw new Error('升级 Gist 同步格式时远端数据发生变化，请重新同步。')
+    }
+    return pushed.remote
   }
 
   private async saveSynced(

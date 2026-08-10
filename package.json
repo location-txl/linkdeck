@@ -2,7 +2,7 @@
   "name": "linkdeck",
   "version": "1.0.0",
   "private": true,
-  "description": "一个带分组与浏览器同步的轻量网址收藏扩展。",
+  "description": "一个带多标签与浏览器同步的轻量网址收藏扩展。",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,6 +13,7 @@
     "package": "pnpm build && node scripts/package.mjs"
   },
   "dependencies": {
+    "@base-ui/react": "^1.7.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
