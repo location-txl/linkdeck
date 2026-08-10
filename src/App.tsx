@@ -3,6 +3,8 @@ import { Favicon } from './components/Favicon'
 import { Icon } from './components/Icon'
 import { Modal } from './components/Modal'
 import { DataTransferModal } from './data-transfer/DataTransferModal'
+import { getGistSyncStatus, requestGistSync, subscribeGistSyncStatus } from './gist-sync/client'
+import type { GistSyncViewState } from './gist-sync/types'
 import { getCurrentPageDraft, openBookmark } from './lib/chrome-api'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { getHostname, UserFacingError } from './lib/bookmark-utils'
@@ -52,6 +54,7 @@ export default function App() {
   const [dataManagerOpen, setDataManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Bookmark>()
   const [searchQuery, setSearchQuery] = useState('')
+  const [gistSyncState, setGistSyncState] = useState<GistSyncViewState>({ status: 'disconnected' })
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const refresh = useCallback(async () => {
@@ -108,6 +111,20 @@ export default function App() {
       },
     )
 
+    return () => {
+      alive = false
+      unsubscribe()
+    }
+  }, [])
+
+  useEffect(() => {
+    let alive = true
+    const updateState = (next: GistSyncViewState) => {
+      if (alive) setGistSyncState(next)
+    }
+    void getGistSyncStatus().then(updateState)
+    void requestGistSync({ type: 'gist-sync:sync-now' }).then((response) => updateState(response.state))
+    const unsubscribe = subscribeGistSyncStatus(updateState)
     return () => {
       alive = false
       unsubscribe()
@@ -277,9 +294,9 @@ export default function App() {
           </div>
         </div>
         <div className="topbar__actions">
-          <span className="sync-state" title="已保存到浏览器同步存储">
+          <span className="sync-state" title={gistSyncTitle(gistSyncState)}>
             <Icon name="cloud" size={15} />
-            <span>已保存</span>
+            <span>{gistSyncLabel(gistSyncState)}</span>
           </span>
           <button
             className="icon-button"
@@ -493,6 +510,7 @@ export default function App() {
             setNotice(`已导出 ${filename}。`)
           }}
           onImport={importData}
+          onGistSyncStateChange={setGistSyncState}
         />
       )}
 
@@ -556,6 +574,19 @@ function importNotice(summary: ImportSummary): string {
   return summary.bookmarksSkipped > 0
     ? `${imported} 跳过 ${summary.bookmarksSkipped} 个重复网站。`
     : imported
+}
+
+function gistSyncLabel(state: GistSyncViewState): string {
+  if (state.status === 'synced') return 'Gist 已同步'
+  if (state.status === 'syncing') return '同步中'
+  if (state.status === 'conflict') return '同步冲突'
+  if (state.status === 'error') return '同步失败'
+  return '已保存'
+}
+
+function gistSyncTitle(state: GistSyncViewState): string {
+  if (state.status === 'disconnected') return '已保存到浏览器同步存储'
+  return state.error ?? gistSyncLabel(state)
 }
 
 function EmptyState({

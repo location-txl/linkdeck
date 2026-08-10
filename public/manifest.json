@@ -22,6 +22,11 @@
     "128": "icons/icon-128.png"
   },
   "permissions": ["storage", "activeTab"],
+  "host_permissions": ["https://api.github.com/*"],
+  "background": {
+    "service_worker": "assets/service-worker.js",
+    "type": "module"
+  },
   "content_security_policy": {
     "extension_pages": "script-src 'self'; object-src 'self'; img-src 'self' data: https://a.favicon.im;"
   }

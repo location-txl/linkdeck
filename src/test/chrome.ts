@@ -42,7 +42,7 @@ function createArea(getStore: () => Store, setStore: (next: Store) => void, area
         next[key] = clone(value)
       })
       setStore(next)
-      if (areaName === 'sync') listeners.forEach((listener) => listener(changes, areaName))
+      listeners.forEach((listener) => listener(changes, areaName))
     }),
     remove: vi.fn(async (keys: string | string[]) => {
       const current = getStore()
@@ -56,7 +56,7 @@ function createArea(getStore: () => Store, setStore: (next: Store) => void, area
         }
       })
       setStore(next)
-      if (areaName === 'sync') listeners.forEach((listener) => listener(changes, areaName))
+      listeners.forEach((listener) => listener(changes, areaName))
     }),
     getBytesInUse: vi.fn(async (keys?: string | string[] | null) => {
       return Object.entries(select(getStore(), keys)).reduce(
@@ -117,3 +117,6 @@ export function getSyncStore(): Store {
   return clone(syncStore)
 }
 
+export function getLocalStore(): Store {
+  return clone(localStore)
+}

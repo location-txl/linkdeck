@@ -1,6 +1,8 @@
 import { useRef, useState } from 'react'
 import { Icon } from '../components/Icon'
 import { Modal } from '../components/Modal'
+import { GistSyncPanel } from '../gist-sync/GistSyncPanel'
+import type { GistSyncViewState } from '../gist-sync/types'
 import type { CollectionSnapshot, ImportMode } from '../types'
 import { downloadBackup, readBackupFile, type LinkDeckBackup } from './data-transfer'
 
@@ -9,6 +11,7 @@ type DataTransferModalProps = {
   onClose: () => void
   onExported: (filename: string) => void
   onImport: (snapshot: CollectionSnapshot, mode: ImportMode) => Promise<void>
+  onGistSyncStateChange?: (state: GistSyncViewState) => void
 }
 
 function errorMessage(error: unknown): string {
@@ -20,6 +23,7 @@ export function DataTransferModal({
   onClose,
   onExported,
   onImport,
+  onGistSyncStateChange,
 }: DataTransferModalProps) {
   const fileInputRef = useRef<HTMLInputElement>(null)
   const [selected, setSelected] = useState<{ fileName: string; backup: LinkDeckBackup }>()
@@ -190,6 +194,8 @@ export function DataTransferModal({
               <Icon name="chevron-right" size={16} />
             </button>
           </div>
+
+          <GistSyncPanel onStateChange={onGistSyncStateChange} />
 
           {formError && <p className="form__error">{formError}</p>}
           <p className="data-transfer__privacy">

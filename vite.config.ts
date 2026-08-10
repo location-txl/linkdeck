@@ -7,6 +7,14 @@ export default defineConfig({
     outDir: 'dist',
     emptyOutDir: true,
     sourcemap: false,
+    rollupOptions: {
+      input: {
+        popup: 'index.html',
+        'service-worker': 'src/service-worker.ts',
+      },
+      output: {
+        entryFileNames: 'assets/[name].js',
+      },
+    },
   },
 })
-
