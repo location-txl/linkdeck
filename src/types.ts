@@ -11,6 +11,7 @@ export const STORAGE_KEYS = {
   tagPrefix: 'linkdeck:v2:tag:',
   bookmarkPrefix: 'linkdeck:v2:bookmark:',
   tagFilter: 'linkdeck:selected-tag-filter',
+  tagClickMode: 'linkdeck:tag-click-mode',
   migrationBackup: 'linkdeck:migration-backup:v1',
   legacyMeta: 'linkdeck:meta',
   legacyBookmarkPrefix: 'linkdeck:bookmark:',
@@ -74,6 +75,9 @@ export type TagFilter = {
   tagIds: string[]
   untaggedOnly: boolean
 }
+
+/** Popup 中标签筛选按钮的点击交互方式。 */
+export type TagClickMode = 'modifier-multi' | 'direct-multi'
 
 /** 仅用于读取并迁移旧版分组数据，不能写回 v2 存储。 */
 export type LegacyGroup = {

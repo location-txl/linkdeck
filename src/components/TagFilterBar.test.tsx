@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { act, cleanup, render, screen, waitFor, within } from '@testing-library/react'
+import { fireEvent } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { TagFilterBar } from './TagFilterBar'
@@ -143,5 +144,30 @@ describe('TagFilterBar', () => {
     expect(within(popover).getAllByRole('button').slice(1, 5).map((button) => button.getAttribute('title'))).toEqual([
       '阅读', '稍长标签', '短标签', '工作',
     ])
+  })
+
+  it('将 Command 或 Ctrl 点击作为多选意图传给调用方', async () => {
+    installMeasurementMocks()
+    const onToggleTag = vi.fn()
+    const { container } = render(
+      <TagFilterBar
+        tags={tags}
+        tagCounts={new Map(tags.map((tag) => [tag.id, 0]))}
+        totalCount={0}
+        untaggedCount={0}
+        filter={{ tagIds: [], untaggedOnly: false }}
+        onSelectAll={vi.fn()}
+        onToggleTag={onToggleTag}
+        onToggleUntagged={vi.fn()}
+        onAdd={vi.fn()}
+      />,
+    )
+
+    const quickTags = container.querySelector<HTMLElement>('.tag-filter-bar__quick')
+    if (!quickTags) throw new Error('快捷标签区域未渲染')
+    await waitFor(() => expect(within(quickTags).getAllByRole('button')).toHaveLength(2))
+
+    fireEvent.click(within(quickTags).getByRole('button', { name: /短标签/ }), { ctrlKey: true })
+    expect(onToggleTag).toHaveBeenLastCalledWith('0', true)
   })
 })

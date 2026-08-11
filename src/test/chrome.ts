@@ -103,6 +103,9 @@ export function installChromeMock(initialSync: Store = {}) {
       query: tabsQuery,
       create: tabsCreate,
     },
+    runtime: {
+      getManifest: () => ({ version: '1.0.0' }),
+    },
   }
 
   vi.stubGlobal('chrome', mockedChrome)

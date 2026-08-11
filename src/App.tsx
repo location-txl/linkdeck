@@ -10,7 +10,7 @@ import type { GistSyncViewState } from './gist-sync/types'
 import { getCurrentPageDraft, openBookmark } from './lib/chrome-api'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { getHostname, UserFacingError } from './lib/bookmark-utils'
-import { getTagFilter, setTagFilter as saveTagFilter } from './lib/preferences'
+import { getTagClickMode, getTagFilter, setTagClickMode, setTagFilter as saveTagFilter } from './lib/preferences'
 import type {
   Bookmark,
   BookmarkDraft,
@@ -18,6 +18,7 @@ import type {
   ImportMode,
   ImportSummary,
   Tag,
+  TagClickMode,
   TagFilter,
 } from './types'
 
@@ -56,10 +57,12 @@ export default function App() {
   const [bookmarkModal, setBookmarkModal] = useState<BookmarkModalState>()
   const [tagForm, setTagForm] = useState<TagFormState>()
   const [tagManagerOpen, setTagManagerOpen] = useState(false)
+  const [settingsOpen, setSettingsOpen] = useState(false)
   const [dataManagerOpen, setDataManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Bookmark>()
   const [deleteTagTarget, setDeleteTagTarget] = useState<Tag>()
   const [searchQuery, setSearchQuery] = useState('')
+  const [tagClickMode, setTagClickModeState] = useState<TagClickMode>('modifier-multi')
   const [gistSyncState, setGistSyncState] = useState<GistSyncViewState>({ status: 'disconnected' })
   const searchInputRef = useRef<HTMLInputElement>(null)
 
@@ -83,11 +86,12 @@ export default function App() {
     let alive = true
     const initialize = async () => {
       try {
-        const [next, savedFilter] = await Promise.all([bookmarkRepository.load(), getTagFilter()])
+        const [next, savedFilter, savedTagClickMode] = await Promise.all([bookmarkRepository.load(), getTagFilter(), getTagClickMode()])
         if (!alive) return
         const filter = sanitizeFilter(savedFilter, next.meta.tags)
         setSnapshot(next)
         setFilterState(filter)
+        setTagClickModeState(savedTagClickMode)
         if (JSON.stringify(filter) !== JSON.stringify(savedFilter)) void saveTagFilter(filter)
       } catch (caught) {
         if (alive) setError(errorMessage(caught))
@@ -187,12 +191,23 @@ export default function App() {
       ? '全部链接'
       : selectedFilterTags.map((tag) => tag.name).join(' + ')
 
-  const toggleTag = (tagId: string) => {
+  const toggleTag = (tagId: string, multiSelect: boolean) => {
+    if (tagClickMode === 'modifier-multi' && !multiSelect) {
+      if (!tagFilter.untaggedOnly && tagFilter.tagIds.length === 1 && tagFilter.tagIds[0] === tagId) return
+      applyTagFilter({ tagIds: [tagId], untaggedOnly: false })
+      return
+    }
+
     const tagIds = tagFilter.untaggedOnly ? [tagId] :
       tagFilter.tagIds.includes(tagId)
         ? tagFilter.tagIds.filter((id) => id !== tagId)
         : [...tagFilter.tagIds, tagId]
     applyTagFilter({ tagIds, untaggedOnly: false })
+  }
+
+  const selectTagClickMode = (mode: TagClickMode) => {
+    setTagClickModeState(mode)
+    void setTagClickMode(mode)
   }
 
   const defaultDraft = (): BookmarkDraft => ({
@@ -269,6 +284,7 @@ export default function App() {
         </div>
         <div className="topbar__actions">
           <span className="sync-state" title={gistSyncTitle(gistSyncState)}><Icon name="cloud" size={15} /><span>{gistSyncLabel(gistSyncState)}</span></span>
+          <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="设置" title="设置"><Icon name="settings" /></button>
           <button className="icon-button" type="button" onClick={() => setDataManagerOpen(true)} aria-label="数据管理" title="数据管理"><Icon name="more" /></button>
           <button className="icon-button" type="button" onClick={() => setTagManagerOpen(true)} aria-label="管理标签" title="管理标签"><Icon name="layers" /></button>
           <button className="icon-button icon-button--accent" type="button" onClick={openManualForm} aria-label="手动添加网站" title="手动添加网站"><Icon name="add" /></button>
@@ -331,6 +347,7 @@ export default function App() {
       <footer className="privacy-note"><Icon name="globe" size={14} /><span>网站图标会从 favicon.im 获取</span></footer>
 
       {bookmarkModal && <BookmarkFormModal key={bookmarkModal.mode === 'edit' ? bookmarkModal.bookmark.id : 'create'} mode={bookmarkModal.mode} initial={bookmarkModal.initial} tags={snapshot.meta.tags} onClose={() => setBookmarkModal(undefined)} onSave={saveBookmark} onRequestDelete={bookmarkModal.mode === 'edit' ? () => { setDeleteTarget(bookmarkModal.bookmark); setBookmarkModal(undefined) } : undefined} />}
+      {settingsOpen && <SettingsModal mode={tagClickMode} onSelectMode={selectTagClickMode} onClose={() => setSettingsOpen(false)} />}
       {dataManagerOpen && <DataTransferModal snapshot={snapshot} onClose={() => setDataManagerOpen(false)} onExported={(filename) => { setDataManagerOpen(false); setNotice(`已导出 ${filename}。`) }} onImport={importData} onGistSyncStateChange={setGistSyncState} />}
       {tagManagerOpen && <TagManagerModal tags={snapshot.meta.tags} bookmarks={snapshot.bookmarks} onClose={() => setTagManagerOpen(false)} onAdd={() => { setTagManagerOpen(false); setTagForm({ mode: 'create' }) }} onEdit={(tag) => { setTagManagerOpen(false); setTagForm({ mode: 'edit', tag }) }} onDelete={(tag) => { setTagManagerOpen(false); setDeleteTagTarget(tag) }} onTogglePin={(tag) => runMutation(() => bookmarkRepository.setTagPinned(tag.id, !tag.pinned), tag.pinned ? '已取消置顶标签。' : '标签已置顶。')} />}
       {tagForm && <TagFormModal key={tagForm.mode === 'edit' ? tagForm.tag.id : 'create'} mode={tagForm.mode} initialName={tagForm.mode === 'edit' ? tagForm.tag.name : ''} onClose={() => setTagForm(undefined)} onSave={saveTag} />}
@@ -373,6 +390,32 @@ function EmptyState({ searching, query, onClear, onAddCurrent, onAddManual }: { 
     return <div className="empty-state empty-state--search"><span className="empty-state__mark"><Icon name="search" size={23} /></span><h3>没有找到“{query}”</h3><p>试试其他关键词，或调整标签筛选。</p><button className="button button--quiet" type="button" onClick={onClear}>清除搜索</button></div>
   }
   return <div className="empty-state"><span className="empty-state__mark"><Icon name="link" size={23} /></span><h3>这里还没有链接</h3><p>添加常用网站，再用标签把它们灵活整理好。</p><div className="empty-state__actions"><button className="button button--ink" type="button" onClick={onAddCurrent}><Icon name="bookmark-add" size={16} />收藏当前页</button><button className="button button--quiet" type="button" onClick={onAddManual}><Icon name="add" size={16} />手动添加</button></div></div>
+}
+
+function SettingsModal({ mode, onSelectMode, onClose }: { mode: TagClickMode; onSelectMode: (mode: TagClickMode) => void; onClose: () => void }) {
+  const version = typeof chrome !== 'undefined' && chrome.runtime?.getManifest ? chrome.runtime.getManifest().version : '开发版'
+  return (
+    <Modal title="设置" onClose={onClose}>
+      <div className="settings">
+        <fieldset className="settings__section">
+          <legend>标签点击方式</legend>
+          <label className="settings__option">
+            <input type="radio" name="tag-click-mode" checked={mode === 'modifier-multi'} onChange={() => onSelectMode('modifier-multi')} />
+            <span><strong>切换标签</strong><small>点击切换单个标签；按 Command 或 Ctrl 点击可多选。</small></span>
+          </label>
+          <label className="settings__option">
+            <input type="radio" name="tag-click-mode" checked={mode === 'direct-multi'} onChange={() => onSelectMode('direct-multi')} />
+            <span><strong>直接多选</strong><small>点击即可选中或取消标签，可连续多选。</small></span>
+          </label>
+        </fieldset>
+        <section className="settings__section settings__about" aria-labelledby="settings-about-title">
+          <h3 id="settings-about-title">关于</h3>
+          <div><strong>LinkDeck</strong><span>v{version}</span></div>
+        </section>
+        <footer className="form__footer form__footer--end"><button className="button button--quiet" type="button" onClick={onClose}>完成</button></footer>
+      </div>
+    </Modal>
+  )
 }
 
 function BookmarkFormModal({ mode, initial, tags, onClose, onSave, onRequestDelete }: { mode: 'create' | 'edit'; initial: BookmarkDraft; tags: Tag[]; onClose: () => void; onSave: (draft: BookmarkDraft) => Promise<void>; onRequestDelete?: () => void }) {

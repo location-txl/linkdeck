@@ -53,6 +53,59 @@ describe('LinkDeck popup', () => {
     expect(screen.queryByText('文档')).not.toBeInTheDocument()
   })
 
+  it('defaults to switching tags and uses Command or Ctrl clicks for multi-select', async () => {
+    const work = await bookmarkRepository.createTag('工作')
+    const dev = await bookmarkRepository.createTag('开发')
+    await bookmarkRepository.createBookmark({ title: '工作链接', url: 'https://work.example.com', tagIds: [work.id], newTagNames: [] })
+    await bookmarkRepository.createBookmark({ title: '开发链接', url: 'https://dev.example.com', tagIds: [dev.id], newTagNames: [] })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('工作链接')
+
+    const filterBar = screen.getByRole('navigation', { name: '标签筛选' })
+    const workButton = within(filterBar).getByRole('button', { name: /工作/ })
+    const devButton = within(filterBar).getByRole('button', { name: /开发/ })
+    await user.click(workButton)
+    expect(await screen.findByRole('heading', { name: '工作' })).toBeInTheDocument()
+    await user.click(devButton)
+    expect(await screen.findByRole('heading', { name: '开发' })).toBeInTheDocument()
+    await user.click(devButton)
+    expect(screen.getByRole('heading', { name: '开发' })).toBeInTheDocument()
+
+    fireEvent.click(workButton, { metaKey: true })
+    expect(await screen.findByRole('heading', { name: '工作 + 开发' })).toBeInTheDocument()
+    fireEvent.click(devButton, { ctrlKey: true })
+    expect(await screen.findByRole('heading', { name: '工作' })).toBeInTheDocument()
+    fireEvent.click(workButton, { metaKey: true })
+    expect(await screen.findByRole('heading', { name: '全部链接' })).toBeInTheDocument()
+  })
+
+  it('persists the direct multi-select setting and displays the extension version', async () => {
+    const work = await bookmarkRepository.createTag('工作')
+    const dev = await bookmarkRepository.createTag('开发')
+    await bookmarkRepository.createBookmark({ title: '组合链接', url: 'https://combined.example.com', tagIds: [work.id, dev.id], newTagNames: [] })
+    const user = userEvent.setup()
+    const first = render(<App />)
+    await screen.findByText('组合链接')
+
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+    expect(within(settings).getByText('v1.0.0')).toBeInTheDocument()
+    await user.click(within(settings).getByRole('radio', { name: /直接多选/ }))
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: '设置' })).not.toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /工作/ }))
+    await user.click(screen.getByRole('button', { name: /开发/ }))
+    expect(await screen.findByRole('heading', { name: '工作 + 开发' })).toBeInTheDocument()
+
+    first.unmount()
+    render(<App />)
+    await screen.findByRole('heading', { name: '工作 + 开发' })
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    expect(await screen.findByRole('radio', { name: /直接多选/ })).toBeChecked()
+  })
+
   it('keeps tag actions visible and filters with every tag from the popover', async () => {
     await bookmarkRepository.createTag('第一个标签')
     await bookmarkRepository.createTag('第二个标签')
@@ -88,7 +141,7 @@ describe('LinkDeck popup', () => {
     await user.click(within(popover).getByRole('button', { name: /第三个很长的标签名称/ }))
     expect(popover).toBeInTheDocument()
     expect(within(filterBar).getByRole('button', { name: /第三个很长的标签名称/ })).toHaveAttribute('aria-pressed', 'true')
-    await user.click(within(popover).getByRole('button', { name: /第四个标签/ }))
+    fireEvent.click(within(popover).getByRole('button', { name: /第四个标签/ }), { metaKey: true })
     expect(await screen.findByRole('heading', { name: '第三个很长的标签名称 + 第四个标签' })).toBeInTheDocument()
     expect(popover).toBeInTheDocument()
 

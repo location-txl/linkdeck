@@ -18,6 +18,7 @@ export type IconName =
   | 'more'
   | 'pin'
   | 'search'
+  | 'settings'
   | 'trash'
   | 'upload'
   | 'warning'
@@ -156,6 +157,13 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
         <svg {...common}>
           <circle cx="10.8" cy="10.8" r="6.3" />
           <path d="m16 16 4 4" />
+        </svg>
+      )
+    case 'settings':
+      return (
+        <svg {...common}>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.4 2.4-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-3.4v-.2a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1-2.4-2.4.1-.1A1.7 1.7 0 0 0 6 15a1.7 1.7 0 0 0-1.6-1H4.2v-3.4h.2A1.7 1.7 0 0 0 6 9a1.7 1.7 0 0 0-.3-1.9l-.1-.1L8 4.6l.1.1A1.7 1.7 0 0 0 10 5a1.7 1.7 0 0 0 1-1.6v-.2h3.4v.2a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1A1.7 1.7 0 0 0 19.4 9a1.7 1.7 0 0 0 1.6 1h.2v3.4H21a1.7 1.7 0 0 0-1.6 1.6Z" />
         </svg>
       )
     case 'trash':

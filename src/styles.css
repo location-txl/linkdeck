@@ -1185,6 +1185,78 @@ p {
   padding-top: 13px;
 }
 
+.settings {
+  padding-top: 2px;
+}
+
+.settings__section {
+  display: grid;
+  gap: 8px;
+  margin: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.settings__section legend,
+.settings__about h3 {
+  padding: 0;
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.settings__option {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 10px;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--paper);
+  cursor: pointer;
+}
+
+.settings__option:has(input:checked) {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+}
+
+.settings__option input {
+  width: 14px;
+  height: 14px;
+  margin: 1px 0 0;
+  accent-color: var(--accent);
+}
+
+.settings__option > span {
+  display: grid;
+  gap: 3px;
+}
+
+.settings__option strong,
+.settings__about strong {
+  font-size: 12px;
+}
+
+.settings__option small {
+  color: var(--ink-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}
+
+.settings__about div {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.settings__about span {
+  color: var(--ink-faint);
+  font-size: 11px;
+}
+
 .confirm {
   padding: 18px 16px 0;
 }

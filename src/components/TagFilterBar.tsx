@@ -10,7 +10,7 @@ type TagFilterBarProps = {
   untaggedCount: number
   filter: TagFilter
   onSelectAll: () => void
-  onToggleTag: (tagId: string) => void
+  onToggleTag: (tagId: string, multiSelect: boolean) => void
   onToggleUntagged: () => void
   onAdd: () => void
 }
@@ -67,7 +67,7 @@ export function TagFilterBar({
         aria-pressed={active}
         onClick={(event) => {
           const quickButton = location === 'quick' ? event.currentTarget : null
-          onToggleTag(tag.id)
+          onToggleTag(tag.id, event.metaKey || event.ctrlKey)
 
           // 取消被提升的标签后，按钮可能离开快捷区；将焦点交给稳定的完整标签入口。
           if (quickButton) {
