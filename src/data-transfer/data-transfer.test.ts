@@ -3,7 +3,7 @@ import type { CollectionSnapshot } from '../types'
 import { MAX_IMPORT_FILE_BYTES, createBackup, parseBackupJson, readBackupFile, serializeBackup } from './data-transfer'
 
 const snapshot: CollectionSnapshot = {
-  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', createdAt: 100, updatedAt: 200 }] },
+  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 100, updatedAt: 200 }] },
   bookmarks: [{ id: 'bookmark-1', tagIds: ['work'], title: 'GitHub', url: 'https://github.com/', createdAt: 300, updatedAt: 400 }],
 }
 
@@ -11,6 +11,15 @@ describe('LinkDeck JSON backup', () => {
   it('exports and parses v2 data', () => {
     const exportedAt = new Date('2026-08-09T08:00:00.000Z')
     expect(parseBackupJson(serializeBackup(snapshot, exportedAt))).toEqual(createBackup(snapshot, exportedAt))
+  })
+
+  it('defaults missing v2 pin state to false and preserves pinned tags in backups', () => {
+    const legacyV2 = JSON.parse(serializeBackup(snapshot))
+    delete legacyV2.data.meta.tags[0].pinned
+    expect(parseBackupJson(JSON.stringify(legacyV2)).data.meta.tags[0]?.pinned).toBe(false)
+
+    const pinned = { ...snapshot, meta: { ...snapshot.meta, tags: [{ ...snapshot.meta.tags[0]!, pinned: true }] } }
+    expect(parseBackupJson(serializeBackup(pinned)).data.meta.tags[0]?.pinned).toBe(true)
   })
 
   it('accepts v1 data and normalizes it into multi-tag v2', () => {
@@ -48,7 +57,7 @@ describe('LinkDeck JSON backup', () => {
   it('accepts more than 30 tags when the storage quota permits it', () => {
     const manyTags: CollectionSnapshot = {
       meta: { schemaVersion: 2, tags: Array.from({ length: 31 }, (_, index) => ({
-        id: `tag-${index}`, name: `标签 ${index}`, createdAt: index, updatedAt: index,
+        id: `tag-${index}`, name: `标签 ${index}`, pinned: false, createdAt: index, updatedAt: index,
       })) },
       bookmarks: [],
     }

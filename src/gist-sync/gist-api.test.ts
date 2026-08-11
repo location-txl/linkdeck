@@ -12,7 +12,7 @@ import {
 import { GIST_SYNC_FILE_NAME } from './types'
 
 const snapshot: CollectionSnapshot = {
-  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 2 }] },
+  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 2 }] },
   bookmarks: [{
     id: 'github',
     tagIds: ['work'],

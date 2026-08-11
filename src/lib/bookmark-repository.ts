@@ -84,11 +84,19 @@ function createEmptyMeta(): LinkDeckMeta {
   return { schemaVersion: 2, tags: [] }
 }
 
-function isTag(value: unknown): value is Tag {
-  if (!value || typeof value !== 'object') return false
+function normalizeTag(value: unknown): Tag | undefined {
+  if (!value || typeof value !== 'object') return undefined
   const candidate = value as Partial<Tag>
-  return typeof candidate.id === 'string' && typeof candidate.name === 'string' &&
-    typeof candidate.createdAt === 'number' && typeof candidate.updatedAt === 'number'
+  if (typeof candidate.id !== 'string' || typeof candidate.name !== 'string' ||
+    typeof candidate.createdAt !== 'number' || typeof candidate.updatedAt !== 'number' ||
+    (candidate.pinned !== undefined && typeof candidate.pinned !== 'boolean')) return undefined
+  return {
+    id: candidate.id,
+    name: candidate.name,
+    pinned: candidate.pinned === true,
+    createdAt: candidate.createdAt,
+    updatedAt: candidate.updatedAt,
+  }
 }
 
 function isBookmark(value: unknown): value is Bookmark {
@@ -118,10 +126,16 @@ function isLegacyBookmark(value: unknown): value is LegacyBookmark {
 function parseMeta(value: unknown): LinkDeckMeta | undefined {
   if (!value || typeof value !== 'object') return undefined
   const candidate = value as Partial<LinkDeckMeta>
-  if (candidate.schemaVersion !== 2 || !Array.isArray(candidate.tags) || !candidate.tags.every(isTag)) {
+  if (candidate.schemaVersion !== 2 || !Array.isArray(candidate.tags)) {
     return undefined
   }
-  return candidate as LinkDeckMeta
+  const tags: Tag[] = []
+  for (const value of candidate.tags) {
+    const tag = normalizeTag(value)
+    if (!tag) return undefined
+    tags.push(tag)
+  }
+  return { schemaVersion: 2, tags }
 }
 
 function parseLegacySnapshot(allItems: StorageRecord): LegacyCollectionSnapshot | undefined {
@@ -178,10 +192,10 @@ function snapshotFromItems(allItems: StorageRecord): CollectionSnapshot | undefi
 
   const tagsById = new Map(meta.tags.map((tag) => [tag.id, tag]))
   Object.entries(allItems)
-    .filter(([key, value]) => key.startsWith(STORAGE_KEYS.tagPrefix) && isTag(value))
+    .filter(([key]) => key.startsWith(STORAGE_KEYS.tagPrefix))
     .forEach(([, value]) => {
-      const tag = value as Tag
-      tagsById.set(tag.id, tag)
+      const tag = normalizeTag(value)
+      if (tag) tagsById.set(tag.id, tag)
     })
   const tags = [...tagsById.values()]
     .sort((left, right) => left.createdAt - right.createdAt || left.id.localeCompare(right.id))
@@ -200,10 +214,26 @@ function snapshotFromItems(allItems: StorageRecord): CollectionSnapshot | undefi
 
 function sameSnapshot(left: CollectionSnapshot, right: CollectionSnapshot): boolean {
   const normalize = (snapshot: CollectionSnapshot) => ({
-    tags: [...snapshot.meta.tags].sort((a, b) => a.id.localeCompare(b.id)),
+    schemaVersion: snapshot.meta.schemaVersion,
+    tags: [...snapshot.meta.tags]
+      .sort((a, b) => a.id.localeCompare(b.id))
+      .map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        pinned: tag.pinned === true,
+        createdAt: tag.createdAt,
+        updatedAt: tag.updatedAt,
+      })),
     bookmarks: [...snapshot.bookmarks]
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map((bookmark) => ({ ...bookmark, tagIds: [...bookmark.tagIds].sort() })),
+      .map((bookmark) => ({
+        id: bookmark.id,
+        tagIds: [...bookmark.tagIds].sort(),
+        title: bookmark.title,
+        url: bookmark.url,
+        createdAt: bookmark.createdAt,
+        updatedAt: bookmark.updatedAt,
+      })),
   })
   return JSON.stringify(normalize(left)) === JSON.stringify(normalize(right))
 }
@@ -235,6 +265,20 @@ function tagsEqual(left: string[], right: string[]): boolean {
 }
 
 export class BookmarkRepository {
+  /** 串行执行同一实例内的标签读改写，避免旧快照覆盖刚完成的标签变更。 */
+  private tagMutationQueue: Promise<void> = Promise.resolve()
+
+  /**
+   * 将标签变更加入 FIFO 队列，使每次变更在真正执行时读取最新存储状态。
+   *
+   * @param mutation 需要串行执行的标签读改写操作。
+   */
+  private enqueueTagMutation<T>(mutation: () => Promise<T>): Promise<T> {
+    const next = this.tagMutationQueue.then(mutation, mutation)
+    this.tagMutationQueue = next.then(() => undefined, () => undefined)
+    return next
+  }
+
   async load(): Promise<CollectionSnapshot> {
     const allItems = await getAllSyncItems()
     const current = snapshotFromItems(allItems)
@@ -286,36 +330,51 @@ export class BookmarkRepository {
       throw new UserFacingError('已有同名标签。')
     }
     const now = nextTagTimestamp(snapshot.meta.tags)
-    const tag: Tag = { id: createId(), name, createdAt: now, updatedAt: now }
+    const tag: Tag = { id: createId(), name, pinned: false, createdAt: now, updatedAt: now }
     await this.writeItems({ [tagKey(tag.id)]: tag })
     return tag
   }
 
   async renameTag(tagId: string, rawName: string): Promise<void> {
     const name = validateTagName(rawName)
-    const snapshot = await this.load()
-    const current = snapshot.meta.tags.find((tag) => tag.id === tagId)
-    if (!current) throw new UserFacingError('找不到这个标签。')
-    if (snapshot.meta.tags.some((tag) => tag.id !== tagId && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
-      throw new UserFacingError('已有同名标签。')
-    }
-    await this.writeItems({ [tagKey(tagId)]: { ...current, name, updatedAt: Date.now() } })
+    return this.enqueueTagMutation(async () => {
+      const snapshot = await this.load()
+      const current = snapshot.meta.tags.find((tag) => tag.id === tagId)
+      if (!current) throw new UserFacingError('找不到这个标签。')
+      if (snapshot.meta.tags.some((tag) => tag.id !== tagId && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+        throw new UserFacingError('已有同名标签。')
+      }
+      await this.writeItems({ [tagKey(tagId)]: { ...current, name, updatedAt: Date.now() } })
+    })
+  }
+
+  /** 更新标签置顶状态，供筛选区优先展示常用标签。 */
+  async setTagPinned(tagId: string, pinned: boolean): Promise<void> {
+    return this.enqueueTagMutation(async () => {
+      const snapshot = await this.load()
+      const current = snapshot.meta.tags.find((tag) => tag.id === tagId)
+      if (!current) throw new UserFacingError('找不到这个标签。')
+      if (current.pinned === pinned) return
+      await this.writeItems({ [tagKey(tagId)]: { ...current, pinned, updatedAt: Date.now() } })
+    })
   }
 
   /** 删除标签及所有关联，但绝不删除关联的收藏。 */
   async deleteTag(tagId: string): Promise<void> {
-    const snapshot = await this.load()
-    if (!snapshot.meta.tags.some((tag) => tag.id === tagId)) throw new UserFacingError('找不到这个标签。')
-    const now = Date.now()
-    const affected = snapshot.bookmarks
-      .filter((bookmark) => bookmark.tagIds.includes(tagId))
-      .map((bookmark) => ({
-        ...bookmark,
-        tagIds: bookmark.tagIds.filter((id) => id !== tagId),
-        updatedAt: now,
-      }))
-    await this.writeItems(Object.fromEntries(affected.map((bookmark) => [bookmarkKey(bookmark.id), bookmark])))
-    await removeSyncItems([tagKey(tagId)])
+    return this.enqueueTagMutation(async () => {
+      const snapshot = await this.load()
+      if (!snapshot.meta.tags.some((tag) => tag.id === tagId)) throw new UserFacingError('找不到这个标签。')
+      const now = Date.now()
+      const affected = snapshot.bookmarks
+        .filter((bookmark) => bookmark.tagIds.includes(tagId))
+        .map((bookmark) => ({
+          ...bookmark,
+          tagIds: bookmark.tagIds.filter((id) => id !== tagId),
+          updatedAt: now,
+        }))
+      await this.writeItems(Object.fromEntries(affected.map((bookmark) => [bookmarkKey(bookmark.id), bookmark])))
+      await removeSyncItems([tagKey(tagId)])
+    })
   }
 
   async createBookmark(draft: BookmarkDraft): Promise<BookmarkSaveResult> {
@@ -406,7 +465,7 @@ export class BookmarkRepository {
         continue
       }
       const now = nextTagTimestamp(tags)
-      const tag: Tag = { id: createId(), name, createdAt: now, updatedAt: now }
+      const tag: Tag = { id: createId(), name, pinned: false, createdAt: now, updatedAt: now }
       tags.push(tag)
       newTags.push(tag)
       names.set(name.toLocaleLowerCase(), tag)
@@ -447,6 +506,10 @@ export class BookmarkRepository {
     for (const importedTag of imported.meta.tags) {
       const existing = tagsByName.get(importedTag.name.toLocaleLowerCase())
       if (existing) {
+        if (importedTag.pinned && !existing.pinned) {
+          existing.pinned = true
+          existing.updatedAt = Math.max(existing.updatedAt, importedTag.updatedAt)
+        }
         importedTagIds.set(importedTag.id, existing.id)
         continue
       }

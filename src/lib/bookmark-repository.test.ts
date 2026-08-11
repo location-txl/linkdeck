@@ -5,7 +5,7 @@ import { getLocalStore, getSyncStore, installChromeMock } from '../test/chrome'
 
 function snapshot(): CollectionSnapshot {
   return {
-    meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 1 }] },
+    meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 1 }] },
     bookmarks: [{ id: 'github', tagIds: ['work'], title: 'GitHub', url: 'https://github.com/', createdAt: 2, updatedAt: 2 }],
   }
 }
@@ -25,6 +25,77 @@ describe('BookmarkRepository', () => {
     const result = await repository.createBookmark({ title: 'GitHub', url: 'github.com', tagIds: [], newTagNames: [] })
     expect(result.created).toBe(true)
     expect((await repository.load()).bookmarks[0]).toMatchObject({ title: 'GitHub', tagIds: [] })
+  })
+
+  it('normalizes old tags and persists pin changes', async () => {
+    installChromeMock({
+      [STORAGE_KEYS.meta]: { schemaVersion: 2, tags: [] },
+      [`${STORAGE_KEYS.tagPrefix}work`]: { id: 'work', name: '工作', createdAt: 1, updatedAt: 1 },
+    })
+    repository = new BookmarkRepository()
+    expect((await repository.load()).meta.tags[0]).toMatchObject({ id: 'work', pinned: false })
+
+    const dateNow = vi.spyOn(Date, 'now').mockReturnValue(10)
+    await repository.setTagPinned('work', true)
+    expect((await repository.load()).meta.tags[0]).toMatchObject({ pinned: true, updatedAt: 10 })
+    await repository.setTagPinned('work', false)
+    expect((await repository.load()).meta.tags[0]).toMatchObject({ pinned: false, updatedAt: 10 })
+    dateNow.mockRestore()
+
+    await expect(repository.setTagPinned('missing', true)).rejects.toThrow('找不到这个标签')
+  })
+
+  it('serializes a pending rename and pin change without losing either field', async () => {
+    const work = await repository.createTag('工作')
+    const originalSet = vi.mocked(chrome.storage.sync.set).getMockImplementation()!
+    let releaseWrite: () => void
+    const allowWrite = new Promise<void>((resolve) => { releaseWrite = resolve })
+    let markWriteStarted: () => void
+    const writeStarted = new Promise<void>((resolve) => { markWriteStarted = resolve })
+    vi.mocked(chrome.storage.sync.set).mockImplementation(async (...args) => {
+      const items = args[0] as Record<string, unknown>
+      const tag = items[`${STORAGE_KEYS.tagPrefix}${work.id}`] as { name?: string } | undefined
+      if (tag?.name === '常用工作') {
+        markWriteStarted()
+        await allowWrite
+      }
+      return originalSet(...args)
+    })
+
+    const rename = repository.renameTag(work.id, '常用工作')
+    await writeStarted
+    const pin = repository.setTagPinned(work.id, true)
+    releaseWrite!()
+    await Promise.all([rename, pin])
+
+    expect((await repository.load()).meta.tags.find((tag) => tag.id === work.id))
+      .toMatchObject({ name: '常用工作', pinned: true })
+  })
+
+  it('does not resurrect a tag when a queued pin runs after deletion', async () => {
+    const work = await repository.createTag('工作')
+    const originalRemove = vi.mocked(chrome.storage.sync.remove).getMockImplementation()!
+    let releaseRemoval: () => void
+    const allowRemoval = new Promise<void>((resolve) => { releaseRemoval = resolve })
+    let markRemovalStarted: () => void
+    const removalStarted = new Promise<void>((resolve) => { markRemovalStarted = resolve })
+    vi.mocked(chrome.storage.sync.remove).mockImplementation(async (...args) => {
+      const keys = args[0] as string | string[]
+      if ((Array.isArray(keys) ? keys : [keys]).includes(`${STORAGE_KEYS.tagPrefix}${work.id}`)) {
+        markRemovalStarted()
+        await allowRemoval
+      }
+      return originalRemove(...args)
+    })
+
+    const deletion = repository.deleteTag(work.id)
+    await removalStarted
+    const pin = repository.setTagPinned(work.id, true)
+    releaseRemoval!()
+    await deletion
+    await expect(pin).rejects.toThrow('找不到这个标签')
+
+    expect((await repository.load()).meta.tags.find((tag) => tag.id === work.id)).toBeUndefined()
   })
 
   it('migrates v1 groups, deterministically merges duplicate URLs, and retains a local backup', async () => {
@@ -154,7 +225,7 @@ describe('BookmarkRepository', () => {
     await repository.createBookmark({ title: '保留的标题', url: 'https://github.com', tagIds: [work.id], newTagNames: [] })
 
     const summary = await repository.importSnapshot({
-      meta: { schemaVersion: 2, tags: [{ id: 'reading', name: '阅读', createdAt: 1, updatedAt: 1 }] },
+      meta: { schemaVersion: 2, tags: [{ id: 'reading', name: '阅读', pinned: false, createdAt: 1, updatedAt: 1 }] },
       bookmarks: [
         { id: 'duplicate', tagIds: ['reading'], title: '导入标题', url: 'https://github.com/', createdAt: 2, updatedAt: 3 },
         { id: 'mdn', tagIds: ['reading'], title: 'MDN', url: 'https://developer.mozilla.org/', createdAt: 2, updatedAt: 3 },
@@ -165,6 +236,16 @@ describe('BookmarkRepository', () => {
     const loaded = await repository.load()
     expect(loaded.bookmarks.find((bookmark) => bookmark.url === 'https://github.com/')?.title).toBe('保留的标题')
     expect(loaded.bookmarks.find((bookmark) => bookmark.url === 'https://github.com/')?.tagIds).toHaveLength(2)
+  })
+
+  it('keeps an existing tag pinned when a same-name tag is imported', async () => {
+    const work = await repository.createTag('工作')
+    await repository.importSnapshot({
+      meta: { schemaVersion: 2, tags: [{ id: 'remote-work', name: '工作', pinned: true, createdAt: 1, updatedAt: 2 }] },
+      bookmarks: [],
+    }, 'merge')
+
+    expect((await repository.load()).meta.tags.find((tag) => tag.id === work.id)?.pinned).toBe(true)
   })
 
   it('preserves unrelated storage items when replacing snapshots', async () => {
@@ -180,7 +261,7 @@ describe('BookmarkRepository', () => {
     await repository.importSnapshot(snapshot(), 'replace')
     const unsubscribe = repository.subscribe(() => undefined)
     const replacement: CollectionSnapshot = {
-      meta: { schemaVersion: 2, tags: [{ id: 'read', name: '阅读', createdAt: 5, updatedAt: 5 }] },
+      meta: { schemaVersion: 2, tags: [{ id: 'read', name: '阅读', pinned: false, createdAt: 5, updatedAt: 5 }] },
       bookmarks: [{ id: 'mdn', tagIds: ['read'], title: 'MDN', url: 'https://developer.mozilla.org/', createdAt: 6, updatedAt: 6 }],
     }
 

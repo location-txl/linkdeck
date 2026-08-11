@@ -251,6 +251,12 @@ p {
   color: #fffaf6;
 }
 
+.icon-button--active {
+  border-color: var(--accent);
+  background: var(--accent-wash);
+  color: var(--accent);
+}
+
 .icon-button--danger:hover:not(:disabled) {
   border-color: var(--danger);
   background: var(--danger-wash);

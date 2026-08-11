@@ -33,10 +33,12 @@ export function TagFilterBar({
 }: TagFilterBarProps) {
   const [open, setOpen] = useState(false)
   const selectedIds = useMemo(() => new Set(filter.tagIds), [filter.tagIds])
-  const orderedTags = useMemo(() => [
-    ...tags.filter((tag) => selectedIds.has(tag.id)),
-    ...tags.filter((tag) => !selectedIds.has(tag.id)),
-  ], [selectedIds, tags])
+  const orderedTags = useMemo(() => tags.map((tag, index) => ({ tag, index }))
+    .sort((left, right) => {
+      const priority = (item: Tag) => item.pinned ? 0 : selectedIds.has(item.id) ? 1 : 2
+      return priority(left.tag) - priority(right.tag) || left.index - right.index
+    })
+    .map(({ tag }) => tag), [selectedIds, tags])
   const quickTagsRef = useRef<HTMLDivElement>(null)
   const tagMeasureRef = useRef<HTMLDivElement>(null)
   const popoverTriggerRef = useRef<HTMLButtonElement>(null)
@@ -159,7 +161,7 @@ export function TagFilterBar({
                   >
                     <span>全部</span><em>{totalCount}</em>
                   </button>
-                  {tags.map((tag) => renderTagButton(tag, 'popover'))}
+                  {orderedTags.map((tag) => renderTagButton(tag, 'popover'))}
                   <button
                     className={`tag-tab ${filter.untaggedOnly ? 'tag-tab--active' : ''}`}
                     type="button"

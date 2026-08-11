@@ -21,6 +21,7 @@ export const STORAGE_KEYS = {
 export type Tag = {
   id: string
   name: string
+  pinned: boolean
   createdAt: number
   updatedAt: number
 }

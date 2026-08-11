@@ -17,6 +17,7 @@ let resizeCallback: ResizeObserverCallback | undefined
 const tags = [...tagWidths.keys()].map((name, index) => ({
   id: String(index),
   name,
+  pinned: false,
   createdAt: index,
   updatedAt: index,
 }))
@@ -112,5 +113,35 @@ describe('TagFilterBar', () => {
 
     await waitFor(() => expect(screen.getByRole('button', { name: /查看全部标签/ })).toHaveFocus())
     expect(promotedTag).not.toBeInTheDocument()
+  })
+
+  it('将置顶标签排在选中和普通标签之前，并在浮层中保持相同顺序', async () => {
+    installMeasurementMocks()
+    const user = userEvent.setup()
+    const prioritizedTags = tags.map((tag) => tag.id === '2' ? { ...tag, pinned: true } : tag)
+    const { container } = render(
+      <TagFilterBar
+        tags={prioritizedTags}
+        tagCounts={new Map(prioritizedTags.map((tag) => [tag.id, 0]))}
+        totalCount={0}
+        untaggedCount={0}
+        filter={{ tagIds: ['3'], untaggedOnly: false }}
+        onSelectAll={vi.fn()}
+        onToggleTag={vi.fn()}
+        onToggleUntagged={vi.fn()}
+        onAdd={vi.fn()}
+      />,
+    )
+
+    const quickTags = container.querySelector<HTMLElement>('.tag-filter-bar__quick')
+    if (!quickTags) throw new Error('快捷标签区域未渲染')
+    await waitFor(() => expect(within(quickTags).getAllByRole('button')).toHaveLength(2))
+    expect(within(quickTags).getAllByRole('button').map((button) => button.getAttribute('title'))).toEqual(['阅读', '稍长标签'])
+
+    await user.click(screen.getByRole('button', { name: /查看全部标签/ }))
+    const popover = await screen.findByRole('dialog', { name: '全部标签' })
+    expect(within(popover).getAllByRole('button').slice(1, 5).map((button) => button.getAttribute('title'))).toEqual([
+      '阅读', '稍长标签', '短标签', '工作',
+    ])
   })
 })

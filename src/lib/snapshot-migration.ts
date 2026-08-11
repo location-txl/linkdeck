@@ -21,7 +21,7 @@ function stableLatest<T extends { id: string; updatedAt: number }>(items: T[]): 
  * 同一网址会确定性地合并为一条收藏，避免不同设备迁移后生成不同实体 ID。
  */
 export function migrateLegacySnapshot(legacy: LegacyCollectionSnapshot): CollectionSnapshot {
-  const tags = clone(legacy.meta.groups)
+  const tags = clone(legacy.meta.groups).map((group) => ({ ...group, pinned: false }))
   const tagOrder = new Map(tags.map((tag, index) => [tag.id, index]))
   const byUrl = new Map<string, typeof legacy.bookmarks>()
 

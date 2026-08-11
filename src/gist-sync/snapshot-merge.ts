@@ -27,7 +27,49 @@ function allIds<T extends { id: string }>(...groups: T[][]): string[] {
 }
 
 function sameTag(left: MergeEntity<Tag>, right: MergeEntity<Tag>): boolean {
-  return JSON.stringify(left) === JSON.stringify(right)
+  if (!left || !right) return left === right
+  return left.id === right.id && left.name === right.name &&
+    (left.pinned === true) === (right.pinned === true) && left.createdAt === right.createdAt &&
+    left.updatedAt === right.updatedAt
+}
+
+/** 合并标签的独立字段，避免重命名与置顶同时发生时制造无意义冲突。 */
+function mergeTag(
+  base: MergeEntity<Tag>,
+  local: MergeEntity<Tag>,
+  remote: MergeEntity<Tag>,
+  conflicts: string[],
+  choice?: ConflictChoice,
+): MergeEntity<Tag> {
+  if (!base || !local || !remote) {
+    return chooseEntity(
+      base,
+      local,
+      remote,
+      sameTag,
+      conflicts,
+      `标签“${local?.name ?? remote?.name ?? base?.name ?? '未知'}”被两端以不同方式修改。`,
+      choice,
+    )
+  }
+
+  const resolve = <T>(baseValue: T, localValue: T, remoteValue: T): { value: T; conflicted: boolean } => {
+    if (localValue === remoteValue) return { value: localValue, conflicted: false }
+    if (localValue === baseValue) return { value: remoteValue, conflicted: false }
+    if (remoteValue === baseValue) return { value: localValue, conflicted: false }
+    return { value: choice === 'remote' ? remoteValue : localValue, conflicted: true }
+  }
+  const name = resolve(base.name, local.name, remote.name)
+  const pinned = resolve(base.pinned, local.pinned, remote.pinned)
+  if (name.conflicted || pinned.conflicted) {
+    conflicts.push(`标签“${local.name}”被两端以不同方式修改。`)
+  }
+  return {
+    ...base,
+    name: name.value,
+    pinned: pinned.value,
+    updatedAt: Math.max(base.updatedAt, local.updatedAt, remote.updatedAt),
+  }
 }
 
 function sameBookmarkContent(left: MergeEntity<Bookmark>, right: MergeEntity<Bookmark>): boolean {
@@ -393,13 +435,11 @@ export function mergeThreeWaySnapshots(
   )
   tagDeletionConflicts.forEach((conflict) => conflicts.push(conflict.message))
   const mergedTags = allIds(base.meta.tags, local.meta.tags, remote.meta.tags)
-    .map((id) => chooseEntity(
+    .map((id) => mergeTag(
       baseTags.get(id),
       localTags.get(id),
       remoteTags.get(id),
-      sameTag,
       conflicts,
-      `标签“${localTags.get(id)?.name ?? remoteTags.get(id)?.name ?? baseTags.get(id)?.name ?? id}”被两端以不同方式修改。`,
       choice,
     ))
     .filter((tag): tag is Tag => Boolean(tag))
@@ -458,6 +498,10 @@ export function mergeInitialSnapshots(local: CollectionSnapshot, remote: Collect
   for (const remoteTag of remote.meta.tags) {
     const existing = tagsByName.get(remoteTag.name.toLocaleLowerCase())
     if (existing) {
+      if (remoteTag.pinned && !existing.pinned) {
+        existing.pinned = true
+        existing.updatedAt = Math.max(existing.updatedAt, remoteTag.updatedAt)
+      }
       remoteTagIds.set(remoteTag.id, existing.id)
       continue
     }
@@ -490,8 +534,24 @@ export function mergeInitialSnapshots(local: CollectionSnapshot, remote: Collect
 export function sameSnapshot(left: CollectionSnapshot, right: CollectionSnapshot): boolean {
   const sortById = <T extends { id: string }>(items: T[]) => [...items].sort((a, b) => a.id.localeCompare(b.id))
   const normalized = (snapshot: CollectionSnapshot) => ({
-    meta: { tags: sortById(snapshot.meta.tags) },
-    bookmarks: sortById(snapshot.bookmarks).map((bookmark) => ({ ...bookmark, tagIds: [...bookmark.tagIds].sort() })),
+    meta: {
+      schemaVersion: snapshot.meta.schemaVersion,
+      tags: sortById(snapshot.meta.tags).map((tag) => ({
+        id: tag.id,
+        name: tag.name,
+        pinned: tag.pinned === true,
+        createdAt: tag.createdAt,
+        updatedAt: tag.updatedAt,
+      })),
+    },
+    bookmarks: sortById(snapshot.bookmarks).map((bookmark) => ({
+      id: bookmark.id,
+      tagIds: [...bookmark.tagIds].sort(),
+      title: bookmark.title,
+      url: bookmark.url,
+      createdAt: bookmark.createdAt,
+      updatedAt: bookmark.updatedAt,
+    })),
   })
   return JSON.stringify(normalized(left)) === JSON.stringify(normalized(right))
 }

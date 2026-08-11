@@ -58,6 +58,23 @@ describe('GistSyncService', () => {
     expect(remote?.data.bookmarks[0]?.title).toBe('Vite')
   })
 
+  it('does not upload or report a conflict when old v2 tags omit pinned', async () => {
+    installChromeMock({
+      'linkdeck:v2:meta': { schemaVersion: 2, tags: [] },
+      'linkdeck:v2:tag:work': { id: 'work', name: '工作', createdAt: 1, updatedAt: 1 },
+    })
+    service = new GistSyncService()
+
+    await service.handle({ type: 'gist-sync:connect', token: 'private-token' })
+    vi.mocked(fetch).mockClear()
+
+    const result = await service.handle({ type: 'gist-sync:sync-now' })
+
+    expect(result).toMatchObject({ ok: true, state: { status: 'synced' } })
+    expect(vi.mocked(fetch)).toHaveBeenCalledTimes(1)
+    expect(vi.mocked(fetch).mock.calls[0]?.[1]?.method).toBeUndefined()
+  })
+
   it('stops on a true concurrent tag rename conflict', async () => {
     await service.handle({ type: 'gist-sync:connect', token: 'private-token' })
     const localTag = await bookmarkRepository.createTag('本机工作')
@@ -108,7 +125,7 @@ describe('GistSyncService', () => {
     }
     remote = legacyDocument as unknown as GistSyncDocument
     await bookmarkRepository.importSnapshot({
-      meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 1 }] },
+      meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 1 }] },
       bookmarks: [{ id: 'github', tagIds: ['work'], title: 'GitHub', url: 'https://github.com/', createdAt: 2, updatedAt: 2 }],
     }, 'replace')
     await chrome.storage.local.set({

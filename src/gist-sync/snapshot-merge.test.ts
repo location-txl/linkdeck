@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import type { CollectionSnapshot } from '../types'
-import { mergeThreeWaySnapshots, sameSnapshot } from './snapshot-merge'
+import { mergeInitialSnapshots, mergeThreeWaySnapshots, sameSnapshot } from './snapshot-merge'
 
 const base: CollectionSnapshot = {
-  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', createdAt: 1, updatedAt: 1 }] },
+  meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 1 }] },
   bookmarks: [{ id: 'github', tagIds: ['work'], title: 'GitHub', url: 'https://github.com/', createdAt: 1, updatedAt: 1 }],
 }
 
@@ -23,10 +23,10 @@ describe('Gist 三方合并', () => {
 
   it('automatically unions independent tag membership changes', () => {
     const local = copy()
-    local.meta.tags.push({ id: 'read', name: '阅读', createdAt: 2, updatedAt: 2 })
+    local.meta.tags.push({ id: 'read', name: '阅读', pinned: false, createdAt: 2, updatedAt: 2 })
     local.bookmarks[0]!.tagIds.push('read')
     const remote = copy()
-    remote.meta.tags.push({ id: 'dev', name: '开发', createdAt: 3, updatedAt: 3 })
+    remote.meta.tags.push({ id: 'dev', name: '开发', pinned: false, createdAt: 3, updatedAt: 3 })
     remote.bookmarks[0]!.tagIds.push('dev')
 
     const result = mergeThreeWaySnapshots(base, local, remote)
@@ -42,6 +42,39 @@ describe('Gist 三方合并', () => {
     expect(mergeThreeWaySnapshots(base, local, remote).conflicts).toHaveLength(1)
     expect(mergeThreeWaySnapshots(base, local, remote, 'local').snapshot.bookmarks[0]?.title).toBe('本机标题')
     expect(mergeThreeWaySnapshots(base, local, remote, 'remote').snapshot.bookmarks[0]?.title).toBe('远端标题')
+  })
+
+  it('merges a rename on one side with a pin change on the other', () => {
+    const local = copy()
+    local.meta.tags[0] = { ...local.meta.tags[0]!, name: '常用工作', updatedAt: 2 }
+    const remote = copy()
+    remote.meta.tags[0] = { ...remote.meta.tags[0]!, pinned: true, updatedAt: 3 }
+
+    const result = mergeThreeWaySnapshots(base, local, remote)
+    expect(result.conflicts).toEqual([])
+    expect(result.snapshot.meta.tags[0]).toMatchObject({ name: '常用工作', pinned: true, updatedAt: 3 })
+  })
+
+  it('resolves only the conflicting name and keeps a one-sided pin change', () => {
+    const local = copy()
+    local.meta.tags[0] = { ...local.meta.tags[0]!, name: '本机工作', pinned: true, updatedAt: 2 }
+    const remote = copy()
+    remote.meta.tags[0] = { ...remote.meta.tags[0]!, name: '远端工作', updatedAt: 3 }
+
+    expect(mergeThreeWaySnapshots(base, local, remote, 'local').snapshot.meta.tags[0])
+      .toMatchObject({ name: '本机工作', pinned: true })
+    expect(mergeThreeWaySnapshots(base, local, remote, 'remote').snapshot.meta.tags[0])
+      .toMatchObject({ name: '远端工作', pinned: true })
+  })
+
+  it('keeps a same-name tag pinned during the first Gist merge', () => {
+    const local = copy()
+    const remote = copy()
+    remote.meta.tags[0] = { ...remote.meta.tags[0]!, id: 'remote-work', pinned: true, updatedAt: 2 }
+
+    expect(mergeInitialSnapshots(local, remote).meta.tags).toEqual([
+      expect.objectContaining({ id: 'work', pinned: true, updatedAt: 2 }),
+    ])
   })
 
   it('reports a conflict instead of deleting existing bookmarks moved to the same URL', () => {
@@ -65,8 +98,8 @@ describe('Gist 三方合并', () => {
   it('restores the selected side when existing tags are renamed to the same name', () => {
     const original: CollectionSnapshot = {
       meta: { schemaVersion: 2, tags: [
-        { id: 'work', name: '工作', createdAt: 1, updatedAt: 1 },
-        { id: 'read', name: '阅读', createdAt: 2, updatedAt: 2 },
+        { id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 1 },
+        { id: 'read', name: '阅读', pinned: false, createdAt: 2, updatedAt: 2 },
       ] },
       bookmarks: [],
     }
@@ -84,13 +117,13 @@ describe('Gist 三方合并', () => {
     const empty: CollectionSnapshot = { meta: { schemaVersion: 2, tags: [] }, bookmarks: [] }
     const local: CollectionSnapshot = {
       meta: { schemaVersion: 2, tags: Array.from({ length: 20 }, (_, index) => ({
-        id: `local-${index}`, name: `本机 ${index}`, createdAt: index, updatedAt: index,
+        id: `local-${index}`, name: `本机 ${index}`, pinned: false, createdAt: index, updatedAt: index,
       })) },
       bookmarks: [],
     }
     const remote: CollectionSnapshot = {
       meta: { schemaVersion: 2, tags: Array.from({ length: 20 }, (_, index) => ({
-        id: `remote-${index}`, name: `远端 ${index}`, createdAt: 100 + index, updatedAt: 100 + index,
+        id: `remote-${index}`, name: `远端 ${index}`, pinned: false, createdAt: 100 + index, updatedAt: 100 + index,
       })) },
       bookmarks: [],
     }
@@ -101,8 +134,8 @@ describe('Gist 三方合并', () => {
   it('surfaces deleted-tag references and restores the chosen side tag without orphan IDs', () => {
     const original: CollectionSnapshot = {
       meta: { schemaVersion: 2, tags: [
-        { id: 'keep', name: '保留', createdAt: 1, updatedAt: 1 },
-        { id: 'shared', name: '共享', createdAt: 2, updatedAt: 2 },
+        { id: 'keep', name: '保留', pinned: false, createdAt: 1, updatedAt: 1 },
+        { id: 'shared', name: '共享', pinned: false, createdAt: 2, updatedAt: 2 },
       ] },
       bookmarks: [],
     }
@@ -141,13 +174,25 @@ describe('Gist 三方合并', () => {
 
   it('ignores tag and membership ordering when comparing snapshots', () => {
     const reordered = copy()
-    reordered.meta.tags.push({ id: 'read', name: '阅读', createdAt: 2, updatedAt: 2 })
+    reordered.meta.tags.push({ id: 'read', name: '阅读', pinned: false, createdAt: 2, updatedAt: 2 })
     reordered.bookmarks[0]!.tagIds = ['work', 'read']
     const sameDataDifferentOrder = copy()
     sameDataDifferentOrder.meta.tags = [...reordered.meta.tags].reverse()
     sameDataDifferentOrder.bookmarks[0]!.tagIds = ['read', 'work']
 
     expect(sameSnapshot(reordered, sameDataDifferentOrder)).toBe(true)
+  })
+
+  it('treats v2 tags without pinned as equivalent to unpinned tags', () => {
+    const legacy = copy()
+    legacy.meta.tags[0] = {
+      id: 'work',
+      name: '工作',
+      createdAt: 1,
+      updatedAt: 1,
+    } as CollectionSnapshot['meta']['tags'][number]
+
+    expect(sameSnapshot(legacy, base)).toBe(true)
   })
 })
 

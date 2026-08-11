@@ -65,9 +65,13 @@ function assertUnique(values: string[], message: string): void {
 
 function parseTag(value: unknown, index: number): Tag {
   const candidate = requiredRecord(value, `第 ${index + 1} 个标签`)
+  if (candidate.pinned !== undefined && typeof candidate.pinned !== 'boolean') {
+    throw new UserFacingError(`第 ${index + 1} 个标签的置顶状态格式不正确。`)
+  }
   return {
     id: requiredString(candidate.id, `第 ${index + 1} 个标签的 ID`).trim(),
     name: validateTagName(requiredString(candidate.name, `第 ${index + 1} 个标签的名称`)),
+    pinned: candidate.pinned === true,
     createdAt: requiredTimestamp(candidate.createdAt, `第 ${index + 1} 个标签的创建时间`),
     updatedAt: requiredTimestamp(candidate.updatedAt, `第 ${index + 1} 个标签的更新时间`),
   }

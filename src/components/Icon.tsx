@@ -16,6 +16,7 @@ export type IconName =
   | 'layers'
   | 'link'
   | 'more'
+  | 'pin'
   | 'search'
   | 'trash'
   | 'upload'
@@ -141,6 +142,13 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
           <circle cx="5" cy="12" r="1" fill="currentColor" stroke="none" />
           <circle cx="12" cy="12" r="1" fill="currentColor" stroke="none" />
           <circle cx="19" cy="12" r="1" fill="currentColor" stroke="none" />
+        </svg>
+      )
+    case 'pin':
+      return (
+        <svg {...common}>
+          <path d="m8 4 8 8M14.7 4.7l4.6 4.6-3 3-.8 4.8-4.8-.8-3 3-4.6-4.6 3-3-.8-4.8 4.8.8 3-3Z" />
+          <path d="m9.5 14.5-5 5" />
         </svg>
       )
     case 'search':

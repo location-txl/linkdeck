@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { serializeBackup } from './data-transfer/data-transfer'
@@ -122,6 +122,48 @@ describe('LinkDeck popup', () => {
     expect(await screen.findByRole('heading', { name: '全部链接' })).toBeInTheDocument()
   })
 
+  it('pins and unpins tags from the manager without closing it', async () => {
+    const work = await bookmarkRepository.createTag('工作')
+    await bookmarkRepository.createTag('阅读')
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+    await user.click(screen.getAllByRole('button', { name: '管理标签' })[0]!)
+    expect(await screen.findByRole('dialog', { name: '管理标签' })).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: '置顶 工作' }))
+    expect(await screen.findByRole('button', { name: '取消置顶 工作' })).toBeInTheDocument()
+    expect((await bookmarkRepository.load()).meta.tags.find((tag) => tag.id === work.id)?.pinned).toBe(true)
+
+    await user.click(screen.getByRole('button', { name: '取消置顶 工作' }))
+    expect(await screen.findByRole('button', { name: '置顶 工作' })).toBeInTheDocument()
+    expect((await bookmarkRepository.load()).meta.tags.find((tag) => tag.id === work.id)?.pinned).toBe(false)
+  })
+
+  it('disables every tag mutation control while a pin request is pending', async () => {
+    await bookmarkRepository.createTag('工作')
+    await bookmarkRepository.createTag('阅读')
+    let releasePin: () => void
+    const pinPending = new Promise<void>((resolve) => { releasePin = resolve })
+    vi.spyOn(bookmarkRepository, 'setTagPinned').mockImplementation(async () => pinPending)
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+    await user.click(screen.getAllByRole('button', { name: '管理标签' })[0]!)
+    const manager = await screen.findByRole('dialog', { name: '管理标签' })
+    await user.click(within(manager).getByRole('button', { name: '置顶 工作' }))
+
+    await waitFor(() => expect(within(manager).getByRole('button', { name: '置顶 工作' })).toBeDisabled())
+    expect(within(manager).getByRole('button', { name: '置顶 阅读' })).toBeDisabled()
+    expect(within(manager).getByRole('button', { name: '重命名 工作' })).toBeDisabled()
+    expect(within(manager).getByRole('button', { name: '删除 阅读' })).toBeDisabled()
+    expect(within(manager).getByRole('button', { name: '新建标签' })).toBeDisabled()
+    expect(within(manager).getByRole('button', { name: '完成' })).toBeEnabled()
+
+    releasePin!()
+    await waitFor(() => expect(within(manager).getByRole('button', { name: '置顶 工作' })).toBeEnabled())
+  })
+
   it('creates a draft tag from the input and shows it on the bookmark', async () => {
     const user = userEvent.setup()
     render(<App />)
@@ -180,7 +222,7 @@ describe('LinkDeck popup', () => {
     expect(createObjectUrl).toHaveBeenCalledOnce()
 
     const json = serializeBackup({
-      meta: { schemaVersion: 2, tags: [{ id: 'read', name: '阅读', createdAt: 1, updatedAt: 1 }] },
+      meta: { schemaVersion: 2, tags: [{ id: 'read', name: '阅读', pinned: false, createdAt: 1, updatedAt: 1 }] },
       bookmarks: [{ id: 'mdn', tagIds: ['read'], title: 'MDN', url: 'https://developer.mozilla.org/', createdAt: 2, updatedAt: 2 }],
     })
     await user.click(screen.getByRole('button', { name: '数据管理' }))
