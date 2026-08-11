@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup, fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
 import { serializeBackup } from './data-transfer/data-transfer'
@@ -47,9 +47,62 @@ describe('LinkDeck popup', () => {
     await user.type(screen.getByRole('searchbox', { name: '搜索收藏' }), 'docs.example')
     expect(screen.getByText('文档')).toBeInTheDocument()
     await user.clear(screen.getByRole('searchbox', { name: '搜索收藏' }))
-    await user.click(screen.getByRole('button', { name: /无标签/ }))
+    await user.click(screen.getByRole('button', { name: /查看全部标签/ }))
+    await user.click(within(await screen.findByRole('dialog', { name: '全部标签' })).getByRole('button', { name: /无标签/ }))
     expect(screen.getByText('无标签', { selector: 'strong' })).toBeInTheDocument()
     expect(screen.queryByText('文档')).not.toBeInTheDocument()
+  })
+
+  it('keeps tag actions visible and filters with every tag from the popover', async () => {
+    await bookmarkRepository.createTag('第一个标签')
+    await bookmarkRepository.createTag('第二个标签')
+    const third = await bookmarkRepository.createTag('第三个很长的标签名称')
+    const fourth = await bookmarkRepository.createTag('第四个标签')
+    await bookmarkRepository.createTag('第五个标签')
+    await bookmarkRepository.createBookmark({
+      title: '组合筛选结果',
+      url: 'https://combined.example.com',
+      tagIds: [third.id, fourth.id],
+      newTagNames: [],
+    })
+    await bookmarkRepository.createBookmark({
+      title: '无标签结果',
+      url: 'https://untagged.example.com',
+      tagIds: [],
+      newTagNames: [],
+    })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('组合筛选结果')
+
+    const filterBar = screen.getByRole('navigation', { name: '标签筛选' })
+    expect(within(filterBar).getByRole('button', { name: '新建标签' })).toBeInTheDocument()
+    expect(within(filterBar).getByRole('button', { name: /第一个标签/ })).toBeInTheDocument()
+    expect(within(filterBar).getByRole('button', { name: /第二个标签/ })).toBeInTheDocument()
+
+    const trigger = within(filterBar).getByRole('button', { name: /查看全部标签/ })
+    await user.click(trigger)
+    const popover = await screen.findByRole('dialog', { name: '全部标签' })
+    expect(within(popover).getByRole('button', { name: /第五个标签/ })).toBeInTheDocument()
+
+    await user.click(within(popover).getByRole('button', { name: /第三个很长的标签名称/ }))
+    expect(popover).toBeInTheDocument()
+    expect(within(filterBar).getByRole('button', { name: /第三个很长的标签名称/ })).toHaveAttribute('aria-pressed', 'true')
+    await user.click(within(popover).getByRole('button', { name: /第四个标签/ }))
+    expect(await screen.findByRole('heading', { name: '第三个很长的标签名称 + 第四个标签' })).toBeInTheDocument()
+    expect(popover).toBeInTheDocument()
+
+    await user.click(within(popover).getByRole('button', { name: /^全部/ }))
+    expect(await screen.findByRole('heading', { name: '全部链接' })).toBeInTheDocument()
+    await user.click(within(popover).getByRole('button', { name: /无标签/ }))
+    expect(await screen.findByRole('heading', { name: '无标签' })).toBeInTheDocument()
+    expect(screen.getByText('无标签结果')).toBeInTheDocument()
+
+    await user.keyboard('{Escape}')
+    expect(screen.queryByRole('dialog', { name: '全部标签' })).not.toBeInTheDocument()
+    expect(trigger).toHaveFocus()
+    await user.click(within(filterBar).getByRole('button', { name: '新建标签' }))
+    expect(await screen.findByLabelText('标签名称')).toBeInTheDocument()
   })
 
   it('persists the tag filter and clears it when the tag is deleted', async () => {

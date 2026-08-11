@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent } fro
 import { Favicon } from './components/Favicon'
 import { Icon } from './components/Icon'
 import { Modal } from './components/Modal'
+import { TagFilterBar } from './components/TagFilterBar'
 import { TagInput } from './components/TagInput'
 import { DataTransferModal } from './data-transfer/DataTransferModal'
 import { getGistSyncStatus, requestGistSync, subscribeGistSyncStatus } from './gist-sync/client'
@@ -255,6 +256,10 @@ export default function App() {
   }
 
   const untaggedCount = snapshot.bookmarks.filter((bookmark) => bookmark.tagIds.length === 0).length
+  const tagCounts = new Map(snapshot.meta.tags.map((tag) => [
+    tag.id,
+    snapshot.bookmarks.filter((bookmark) => bookmark.tagIds.includes(tag.id)).length,
+  ]))
   return (
     <main className="app-shell">
       <header className="topbar">
@@ -282,20 +287,17 @@ export default function App() {
         <button className="current-page-button" type="button" onClick={() => void openCurrentPageForm()}><Icon name="bookmark-add" size={16} />收藏当前页</button>
       </section>
 
-      <nav className="tag-tabs" aria-label="标签筛选">
-        <button className={`tag-tab ${!tagFilter.untaggedOnly && tagFilter.tagIds.length === 0 ? 'tag-tab--active' : ''}`} type="button" aria-pressed={!tagFilter.untaggedOnly && tagFilter.tagIds.length === 0} onClick={() => applyTagFilter({ tagIds: [], untaggedOnly: false })}>
-          <span>全部</span><em>{snapshot.bookmarks.length}</em>
-        </button>
-        {snapshot.meta.tags.map((tag) => {
-          const count = snapshot.bookmarks.filter((bookmark) => bookmark.tagIds.includes(tag.id)).length
-          const active = !tagFilter.untaggedOnly && tagFilter.tagIds.includes(tag.id)
-          return <button key={tag.id} className={`tag-tab ${active ? 'tag-tab--active' : ''}`} type="button" aria-pressed={active} onClick={() => toggleTag(tag.id)}><span>{tag.name}</span><em>{count}</em></button>
-        })}
-        <button className={`tag-tab ${tagFilter.untaggedOnly ? 'tag-tab--active' : ''}`} type="button" aria-pressed={tagFilter.untaggedOnly} onClick={() => applyTagFilter({ tagIds: [], untaggedOnly: !tagFilter.untaggedOnly })}>
-          <span>无标签</span><em>{untaggedCount}</em>
-        </button>
-        <button className="tag-tab tag-tab--add" type="button" onClick={() => setTagForm({ mode: 'create' })} aria-label="新建标签" title="新建标签"><Icon name="add" size={16} /></button>
-      </nav>
+      <TagFilterBar
+        tags={snapshot.meta.tags}
+        tagCounts={tagCounts}
+        totalCount={snapshot.bookmarks.length}
+        untaggedCount={untaggedCount}
+        filter={tagFilter}
+        onSelectAll={() => applyTagFilter({ tagIds: [], untaggedOnly: false })}
+        onToggleTag={toggleTag}
+        onToggleUntagged={() => applyTagFilter({ tagIds: [], untaggedOnly: !tagFilter.untaggedOnly })}
+        onAdd={() => setTagForm({ mode: 'create' })}
+      />
 
       <div className="search-field" role="search">
         <Icon className="search-field__icon" name="search" size={16} />
