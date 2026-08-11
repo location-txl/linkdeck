@@ -39,6 +39,7 @@ export function TagFilterBar({
   ], [selectedIds, tags])
   const quickTagsRef = useRef<HTMLDivElement>(null)
   const tagMeasureRef = useRef<HTMLDivElement>(null)
+  const popoverTriggerRef = useRef<HTMLButtonElement>(null)
   const [quickTagCount, setQuickTagCount] = useState(orderedTags.length)
 
   const allActive = !filter.untaggedOnly && filter.tagIds.length === 0
@@ -62,7 +63,17 @@ export function TagFilterBar({
         key={tag.id}
         type="button"
         aria-pressed={active}
-        onClick={() => onToggleTag(tag.id)}
+        onClick={(event) => {
+          const quickButton = location === 'quick' ? event.currentTarget : null
+          onToggleTag(tag.id)
+
+          // 取消被提升的标签后，按钮可能离开快捷区；将焦点交给稳定的完整标签入口。
+          if (quickButton) {
+            window.setTimeout(() => {
+              if (!quickButton.isConnected) popoverTriggerRef.current?.focus()
+            })
+          }
+        }}
         title={tag.name}
       >
         <span>{tag.name}</span><em>{tagCounts.get(tag.id) ?? 0}</em>
@@ -128,6 +139,7 @@ export function TagFilterBar({
       <div className="tag-filter-bar__actions">
         <Popover.Root open={open} onOpenChange={setOpen}>
           <Popover.Trigger
+            ref={popoverTriggerRef}
             className={`tag-filter-bar__trigger ${triggerActive ? 'tag-filter-bar__trigger--active' : ''}`}
             aria-label={triggerAriaLabel}
           >
