@@ -31,6 +31,23 @@ type FallbackListener = () => void
 const fallbackStorage = new Map<string, unknown>()
 const fallbackLocalStorage = new Map<string, unknown>()
 const fallbackListeners = new Set<FallbackListener>()
+const STORAGE_MUTATION_LOCK = 'linkdeck:sync-storage-mutation'
+let fallbackStorageMutationQueue: Promise<void> = Promise.resolve()
+
+/**
+ * 串行化所有同步存储的读改写，协调 popup 与 MV3 service worker 的并发操作。
+ *
+ * Web Locks 可跨扩展上下文共享；测试环境或不支持 Web Locks 的运行时退回当前
+ * JavaScript 上下文内的 FIFO 队列，保证本地 fallback 存储仍具有确定的顺序。
+ */
+function enqueueStorageMutation<T>(mutation: () => Promise<T>): Promise<T> {
+  if (typeof navigator !== 'undefined' && navigator.locks) {
+    return navigator.locks.request(STORAGE_MUTATION_LOCK, () => mutation()).then((result) => result)
+  }
+  const next = fallbackStorageMutationQueue.then(mutation, mutation)
+  fallbackStorageMutationQueue = next.then(() => undefined, () => undefined)
+  return next
+}
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -280,6 +297,10 @@ export class BookmarkRepository {
   }
 
   async load(): Promise<CollectionSnapshot> {
+    return enqueueStorageMutation(() => this.loadUnlocked())
+  }
+
+  private async loadUnlocked(): Promise<CollectionSnapshot> {
     const allItems = await getAllSyncItems()
     const current = snapshotFromItems(allItems)
 
@@ -325,44 +346,46 @@ export class BookmarkRepository {
 
   async createTag(rawName: string): Promise<Tag> {
     const name = validateTagName(rawName)
-    const snapshot = await this.load()
-    if (snapshot.meta.tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
-      throw new UserFacingError('已有同名标签。')
-    }
-    const now = nextTagTimestamp(snapshot.meta.tags)
-    const tag: Tag = { id: createId(), name, pinned: false, createdAt: now, updatedAt: now }
-    await this.writeItems({ [tagKey(tag.id)]: tag })
-    return tag
+    return enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
+      if (snapshot.meta.tags.some((tag) => tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
+        throw new UserFacingError('已有同名标签。')
+      }
+      const now = nextTagTimestamp(snapshot.meta.tags)
+      const tag: Tag = { id: createId(), name, pinned: false, createdAt: now, updatedAt: now }
+      await this.writeItems({ [tagKey(tag.id)]: tag })
+      return tag
+    })
   }
 
   async renameTag(tagId: string, rawName: string): Promise<void> {
     const name = validateTagName(rawName)
-    return this.enqueueTagMutation(async () => {
-      const snapshot = await this.load()
+    return this.enqueueTagMutation(() => enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
       const current = snapshot.meta.tags.find((tag) => tag.id === tagId)
       if (!current) throw new UserFacingError('找不到这个标签。')
       if (snapshot.meta.tags.some((tag) => tag.id !== tagId && tag.name.toLocaleLowerCase() === name.toLocaleLowerCase())) {
         throw new UserFacingError('已有同名标签。')
       }
       await this.writeItems({ [tagKey(tagId)]: { ...current, name, updatedAt: Date.now() } })
-    })
+    }))
   }
 
   /** 更新标签置顶状态，供筛选区优先展示常用标签。 */
   async setTagPinned(tagId: string, pinned: boolean): Promise<void> {
-    return this.enqueueTagMutation(async () => {
-      const snapshot = await this.load()
+    return this.enqueueTagMutation(() => enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
       const current = snapshot.meta.tags.find((tag) => tag.id === tagId)
       if (!current) throw new UserFacingError('找不到这个标签。')
       if (current.pinned === pinned) return
       await this.writeItems({ [tagKey(tagId)]: { ...current, pinned, updatedAt: Date.now() } })
-    })
+    }))
   }
 
   /** 删除标签及所有关联，但绝不删除关联的收藏。 */
   async deleteTag(tagId: string): Promise<void> {
-    return this.enqueueTagMutation(async () => {
-      const snapshot = await this.load()
+    return this.enqueueTagMutation(() => enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
       if (!snapshot.meta.tags.some((tag) => tag.id === tagId)) throw new UserFacingError('找不到这个标签。')
       const now = Date.now()
       const affected = snapshot.bookmarks
@@ -374,70 +397,92 @@ export class BookmarkRepository {
         }))
       await this.writeItems(Object.fromEntries(affected.map((bookmark) => [bookmarkKey(bookmark.id), bookmark])))
       await removeSyncItems([tagKey(tagId)])
-    })
+    }))
   }
 
   async createBookmark(draft: BookmarkDraft): Promise<BookmarkSaveResult> {
-    const snapshot = await this.load()
-    const prepared = this.prepareBookmark(snapshot, draft)
-    const duplicate = snapshot.bookmarks.find((bookmark) => hasSameUrl(bookmark.url, prepared.url))
-    if (duplicate) {
-      const tagIds = orderedTagIds([...duplicate.tagIds, ...prepared.tagIds], prepared.tags)
-      const tagsMerged = !tagsEqual(tagIds, duplicate.tagIds)
-      const bookmark = tagsMerged ? { ...duplicate, tagIds, updatedAt: Date.now() } : duplicate
-      await this.writeBookmarkAndTags(bookmark, prepared.newTags, tagsMerged)
-      return { bookmark, created: false, tagsMerged }
-    }
+    return enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
+      const prepared = this.prepareBookmark(snapshot, draft)
+      const duplicate = snapshot.bookmarks.find((bookmark) => hasSameUrl(bookmark.url, prepared.url))
+      if (duplicate) {
+        const tagIds = orderedTagIds([...duplicate.tagIds, ...prepared.tagIds], prepared.tags)
+        const tagsMerged = !tagsEqual(tagIds, duplicate.tagIds)
+        const bookmark = tagsMerged ? { ...duplicate, tagIds, updatedAt: Date.now() } : duplicate
+        await this.writeBookmarkAndTags(bookmark, prepared.newTags, tagsMerged)
+        return { bookmark, created: false, tagsMerged }
+      }
 
-    const now = Date.now()
-    const bookmark: Bookmark = {
-      id: createId(),
-      tagIds: prepared.tagIds,
-      title: prepared.title,
-      url: prepared.url,
-      createdAt: now,
-      updatedAt: now,
-    }
-    await this.writeBookmarkAndTags(bookmark, prepared.newTags, true)
-    return { bookmark, created: true, tagsMerged: false }
+      const now = Date.now()
+      const bookmark: Bookmark = {
+        id: createId(),
+        tagIds: prepared.tagIds,
+        title: prepared.title,
+        url: prepared.url,
+        createdAt: now,
+        updatedAt: now,
+      }
+      await this.writeBookmarkAndTags(bookmark, prepared.newTags, true)
+      return { bookmark, created: true, tagsMerged: false }
+    })
   }
 
   async updateBookmark(bookmarkId: string, draft: BookmarkDraft): Promise<Bookmark> {
-    const snapshot = await this.load()
-    const existing = snapshot.bookmarks.find((bookmark) => bookmark.id === bookmarkId)
-    if (!existing) throw new UserFacingError('找不到这个网站。')
-    const prepared = this.prepareBookmark(snapshot, draft)
-    if (snapshot.bookmarks.some((bookmark) => bookmark.id !== bookmarkId && hasSameUrl(bookmark.url, prepared.url))) {
-      throw new UserFacingError('该网址已收藏，请编辑现有条目。')
-    }
-    const bookmark: Bookmark = {
-      ...existing,
-      tagIds: prepared.tagIds,
-      title: prepared.title,
-      url: prepared.url,
-      updatedAt: Date.now(),
-    }
-    await this.writeBookmarkAndTags(bookmark, prepared.newTags, true)
-    return bookmark
+    return enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
+      const existing = snapshot.bookmarks.find((bookmark) => bookmark.id === bookmarkId)
+      if (!existing) throw new UserFacingError('找不到这个网站。')
+      const prepared = this.prepareBookmark(snapshot, draft)
+      if (snapshot.bookmarks.some((bookmark) => bookmark.id !== bookmarkId && hasSameUrl(bookmark.url, prepared.url))) {
+        throw new UserFacingError('该网址已收藏，请编辑现有条目。')
+      }
+      const bookmark: Bookmark = {
+        ...existing,
+        tagIds: prepared.tagIds,
+        title: prepared.title,
+        url: prepared.url,
+        updatedAt: Date.now(),
+      }
+      await this.writeBookmarkAndTags(bookmark, prepared.newTags, true)
+      return bookmark
+    })
   }
 
   async deleteBookmark(bookmarkId: string): Promise<void> {
-    const snapshot = await this.load()
-    if (!snapshot.bookmarks.some((bookmark) => bookmark.id === bookmarkId)) {
-      throw new UserFacingError('找不到这个网站。')
-    }
-    await removeSyncItems([bookmarkKey(bookmarkId)])
+    return enqueueStorageMutation(async () => {
+      const snapshot = await this.loadUnlocked()
+      if (!snapshot.bookmarks.some((bookmark) => bookmark.id === bookmarkId)) {
+        throw new UserFacingError('找不到这个网站。')
+      }
+      await removeSyncItems([bookmarkKey(bookmarkId)])
+    })
   }
 
-  async importSnapshot(imported: CollectionSnapshot, mode: ImportMode): Promise<ImportSummary> {
-    const current = await this.load()
-    if (mode === 'replace') {
-      await this.replaceSnapshot(clone(imported), current)
-      return { tagsAdded: imported.meta.tags.length, bookmarksAdded: imported.bookmarks.length, bookmarksMerged: 0 }
-    }
-    const { snapshot, summary } = this.mergeSnapshots(current, imported)
-    await this.replaceSnapshot(snapshot, current)
-    return summary
+  /**
+   * 导入收藏快照，并在需要时替换当前同步存储内容。
+   *
+   * @param imported 待导入的完整收藏快照。
+   * @param mode `replace` 直接替换，`merge` 将导入内容合并到本机数据。
+   * @param expectedCurrent 可选的替换前快照；用于把网络读取后的本机变更识别为冲突。
+   */
+  async importSnapshot(
+    imported: CollectionSnapshot,
+    mode: ImportMode,
+    expectedCurrent?: CollectionSnapshot,
+  ): Promise<ImportSummary> {
+    return enqueueStorageMutation(async () => {
+      const current = await this.loadUnlocked()
+      if (expectedCurrent && !sameSnapshot(current, expectedCurrent)) {
+        throw new UserFacingError('数据在替换期间发生变化，请重试。')
+      }
+      if (mode === 'replace') {
+        await this.replaceSnapshot(clone(imported), current)
+        return { tagsAdded: imported.meta.tags.length, bookmarksAdded: imported.bookmarks.length, bookmarksMerged: 0 }
+      }
+      const { snapshot, summary } = this.mergeSnapshots(current, imported)
+      await this.replaceSnapshot(snapshot, current)
+      return summary
+    })
   }
 
   private prepareBookmark(snapshot: CollectionSnapshot, draft: BookmarkDraft): {

@@ -255,7 +255,7 @@ export class GistSyncService {
       if (!sameSnapshot(local, await bookmarkRepository.load())) {
         throw new Error('绑定期间本机数据已变化，请重新确认同步方式。')
       }
-      await bookmarkRepository.importSnapshot(remote.document.data, 'replace')
+      await bookmarkRepository.importSnapshot(remote.document.data, 'replace', local)
       const upgraded = await this.upgradeLegacyRemote(credentials, remote, remote.document.data)
       return this.saveSynced(credentials, upgraded, remote.document.data)
     }
@@ -265,7 +265,7 @@ export class GistSyncService {
       if (!sameSnapshot(local, await bookmarkRepository.load())) {
         throw new Error('绑定期间本机数据已变化，请重新确认同步方式。')
       }
-      await bookmarkRepository.importSnapshot(next, 'replace')
+      await bookmarkRepository.importSnapshot(next, 'replace', local)
     }
     const pushed = await this.pushSnapshot(credentials, next, remote)
     if (!pushed.verified) {
@@ -305,7 +305,7 @@ export class GistSyncService {
     if (!localChanged && remoteChanged) {
       const interrupted = await this.guardLocalBeforeReplace(local, baseline.snapshot, remote, attempt)
       if (interrupted) return interrupted
-      await bookmarkRepository.importSnapshot(remote.document.data, 'replace')
+      await bookmarkRepository.importSnapshot(remote.document.data, 'replace', local)
       const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, remote.document.data)
       return this.saveSynced(stored.credentials, upgraded, remote.document.data)
     }
@@ -354,7 +354,7 @@ export class GistSyncService {
 
     const interrupted = await this.guardLocalBeforeReplace(local, baseline.snapshot, latest, attempt)
     if (interrupted) return interrupted
-    await bookmarkRepository.importSnapshot(merged.snapshot, 'replace')
+    await bookmarkRepository.importSnapshot(merged.snapshot, 'replace', local)
     const pushed = await this.pushSnapshot(stored.credentials, merged.snapshot, latest)
     if (!pushed.verified) {
       return this.saveConflict(
@@ -429,7 +429,7 @@ export class GistSyncService {
         remote.document.sync.revisionId,
       )
     }
-    await bookmarkRepository.importSnapshot(resolved.snapshot, 'replace')
+    await bookmarkRepository.importSnapshot(resolved.snapshot, 'replace', local)
     const pushed = await this.pushSnapshot(stored.credentials, resolved.snapshot, remote)
     if (!pushed.verified) {
       return this.saveConflict(

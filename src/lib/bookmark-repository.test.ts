@@ -98,6 +98,66 @@ describe('BookmarkRepository', () => {
     expect((await repository.load()).meta.tags.find((tag) => tag.id === work.id)).toBeUndefined()
   })
 
+  it('serializes snapshot replacement with a concurrent pin across repository instances', async () => {
+    await repository.importSnapshot(snapshot(), 'replace')
+    const otherRepository = new BookmarkRepository()
+    const expected = await repository.load()
+    const replacement: CollectionSnapshot = {
+      meta: {
+        schemaVersion: 2,
+        tags: expected.meta.tags.map((tag) => ({ ...tag, name: '远端工作', pinned: false })),
+      },
+      bookmarks: expected.bookmarks,
+    }
+    const originalSet = vi.mocked(chrome.storage.sync.set).getMockImplementation()!
+    let releaseReplacement: () => void
+    const replacementAllowed = new Promise<void>((resolve) => { releaseReplacement = resolve })
+    let markReplacementStarted: () => void
+    const replacementStarted = new Promise<void>((resolve) => { markReplacementStarted = resolve })
+    vi.mocked(chrome.storage.sync.set).mockImplementation(async (...args) => {
+      const items = args[0] as Record<string, unknown>
+      const tag = items[`${STORAGE_KEYS.tagPrefix}work`] as { name?: string } | undefined
+      if (tag?.name === '远端工作') {
+        markReplacementStarted()
+        await replacementAllowed
+      }
+      return originalSet(...args)
+    })
+
+    const replace = repository.importSnapshot(replacement, 'replace', expected)
+    await replacementStarted
+    let pinSettled = false
+    const pin = otherRepository.setTagPinned('work', true).then(() => {
+      pinSettled = true
+    })
+    try {
+      await Promise.resolve()
+      expect(pinSettled).toBe(false)
+    } finally {
+      releaseReplacement!()
+    }
+
+    await Promise.all([replace, pin])
+    expect((await repository.load()).meta.tags[0]).toMatchObject({ name: '远端工作', pinned: true })
+  })
+
+  it('rejects a replacement based on a stale snapshot after a local pin change', async () => {
+    await repository.importSnapshot(snapshot(), 'replace')
+    const expected = await repository.load()
+    await repository.setTagPinned('work', true)
+    const replacement: CollectionSnapshot = {
+      meta: {
+        schemaVersion: 2,
+        tags: expected.meta.tags.map((tag) => ({ ...tag, name: '远端工作', pinned: false })),
+      },
+      bookmarks: expected.bookmarks,
+    }
+
+    await expect(repository.importSnapshot(replacement, 'replace', expected))
+      .rejects.toThrow('数据在替换期间发生变化')
+    expect((await repository.load()).meta.tags[0]).toMatchObject({ pinned: true })
+  })
+
   it('migrates v1 groups, deterministically merges duplicate URLs, and retains a local backup', async () => {
     installChromeMock({
       [STORAGE_KEYS.legacyMeta]: {
