@@ -104,7 +104,7 @@ export function installChromeMock(initialSync: Store = {}) {
       create: tabsCreate,
     },
     runtime: {
-      getManifest: () => ({ version: '1.0.0' }),
+      getManifest: () => ({ version: '1.0.1' }),
     },
   }
 

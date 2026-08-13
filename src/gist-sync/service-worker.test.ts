@@ -17,6 +17,7 @@ describe('Gist service worker', () => {
     const baseChrome = installChromeMock()
     let storageListener: ((changes: Record<string, chrome.storage.StorageChange>, areaName: string) => void) | undefined
     let startupListener: (() => void) | undefined
+    let installedListener: (() => void) | undefined
     let messageListener: ((message: unknown, sender: unknown, sendResponse: (response: unknown) => void) => boolean | void) | undefined
     vi.stubGlobal('chrome', {
       ...baseChrome,
@@ -29,6 +30,11 @@ describe('Gist service worker', () => {
         onStartup: {
           addListener: (listener: () => void) => {
             startupListener = listener
+          },
+        },
+        onInstalled: {
+          addListener: (listener: () => void) => {
+            installedListener = listener
           },
         },
       },
@@ -65,8 +71,18 @@ describe('Gist service worker', () => {
     await Promise.resolve()
     expect(handle).toHaveBeenCalledTimes(3)
 
+    handle.mockResolvedValueOnce({ ok: true, state: { status: 'syncing' } })
+    installedListener?.()
+    await Promise.resolve()
+    expect(handle).toHaveBeenCalledTimes(4)
+
+    await vi.advanceTimersByTimeAsync(3_000)
+    expect(handle).toHaveBeenCalledTimes(5)
+    expect(handle).toHaveBeenLastCalledWith({ type: 'gist-sync:sync-now' })
+
     const respond = vi.fn()
     expect(messageListener?.({ type: 'gist-sync:get-status' }, {}, respond)).toBe(true)
+    await Promise.resolve()
     await Promise.resolve()
     expect(handle).toHaveBeenCalledWith({ type: 'gist-sync:get-status' })
     expect(respond).toHaveBeenCalledWith({ ok: true, state: { status: 'disconnected' } })

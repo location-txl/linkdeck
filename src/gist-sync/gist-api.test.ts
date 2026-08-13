@@ -8,8 +8,9 @@ import {
   parseGistId,
   readGist,
   serializeGistDocument,
+  updateGist,
 } from './gist-api'
-import { GIST_SYNC_FILE_NAME } from './types'
+import { GIST_SYNC_FILE_NAME, type GistCredentials } from './types'
 
 const snapshot: CollectionSnapshot = {
   meta: { schemaVersion: 2, tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 2 }] },
@@ -93,6 +94,10 @@ describe('Gist API', () => {
       id: 'abc123',
       document: { sync: { parentRevisionId: 'parent' } },
     })
+    expect(fetchMock).toHaveBeenCalledWith(
+      'https://api.github.com/gists/abc123',
+      expect.objectContaining({ cache: 'no-store' }),
+    )
 
     fetchMock.mockResolvedValueOnce(jsonResponse({
       id: 'abc123',
@@ -100,6 +105,28 @@ describe('Gist API', () => {
       files: {},
     }))
     await expect(readGist('token', 'abc123')).rejects.toThrow(`缺少 ${GIST_SYNC_FILE_NAME}`)
+  })
+
+  it('returns the updated document from the PATCH response', async () => {
+    const document = createGistDocument(snapshot, 'parent')
+    const fetchMock = vi.fn().mockResolvedValue(jsonResponse({
+      id: 'abc123',
+      html_url: 'https://gist.github.com/example/abc123',
+      files: {
+        [GIST_SYNC_FILE_NAME]: { content: serializeGistDocument(document), truncated: false },
+      },
+    }))
+    vi.stubGlobal('fetch', fetchMock)
+    const credentials: GistCredentials = {
+      token: 'token-value',
+      gistId: 'abc123',
+      gistUrl: 'https://gist.github.com/example/abc123',
+    }
+
+    await expect(updateGist(credentials, document)).resolves.toMatchObject({
+      id: 'abc123',
+      document: { sync: { revisionId: document.sync.revisionId } },
+    })
   })
 
   it('surfaces GitHub authorization and rate-limit failures', async () => {

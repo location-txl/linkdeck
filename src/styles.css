@@ -428,6 +428,10 @@ p {
   color: var(--paper);
 }
 
+.tag-tab--active:hover {
+  color: var(--paper);
+}
+
 .tag-tab--active em {
   color: var(--yellow);
 }

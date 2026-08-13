@@ -90,7 +90,7 @@ describe('LinkDeck popup', () => {
 
     await user.click(screen.getByRole('button', { name: '设置' }))
     const settings = await screen.findByRole('dialog', { name: '设置' })
-    expect(within(settings).getByText('v1.0.0')).toBeInTheDocument()
+    expect(within(settings).getByText('v1.0.1')).toBeInTheDocument()
     await user.click(within(settings).getByRole('radio', { name: /直接多选/ }))
     await user.keyboard('{Escape}')
     expect(screen.queryByRole('dialog', { name: '设置' })).not.toBeInTheDocument()

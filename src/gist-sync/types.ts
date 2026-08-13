@@ -41,6 +41,12 @@ export type GistSyncBaseline = {
   snapshot: CollectionSnapshot
 }
 
+/** PATCH 已返回新版本、但后续 GET 尚未确认可见时保留的旧远端基线。 */
+export type GistPendingWrite = {
+  parentRevisionId: string
+  parentSnapshot: CollectionSnapshot
+}
+
 /** 等待用户统一选择来源的三方合并冲突。 */
 export type GistSyncConflict = {
   base: CollectionSnapshot
@@ -54,6 +60,7 @@ export type GistSyncConflict = {
 export type StoredGistSyncState = {
   credentials?: GistCredentials
   baseline?: GistSyncBaseline
+  pendingWrite?: GistPendingWrite
   status: GistSyncStatus
   lastSyncedAt?: string
   error?: string

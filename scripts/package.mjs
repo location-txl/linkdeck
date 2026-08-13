@@ -19,7 +19,7 @@ const bestzipExecutable = resolve(
 execFileSync(
   bestzipExecutable,
   [
-    resolve(releaseDirectory, 'linkdeck-v1.0.0.zip'),
+    resolve(releaseDirectory, 'linkdeck-v1.0.1.zip'),
     '_locales',
     'assets',
     'icons',

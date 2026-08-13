@@ -19,12 +19,19 @@ import {
   GIST_SYNC_STORAGE_KEY,
   type GistBindingPreview,
   type GistCredentials,
+  type GistPendingWrite,
   type GistSyncConflict,
   type GistSyncViewState,
   type StoredGistSyncState,
 } from './types'
 
 type StorageRecord = Record<string, unknown>
+
+type PushSnapshotResult = {
+  remote: RemoteGist
+  verified: boolean
+  pendingWrite?: GistPendingWrite
+}
 
 const fallbackStorage = new Map<string, unknown>()
 
@@ -67,6 +74,11 @@ function normalizeStoredState(value: unknown): StoredGistSyncState {
     const snapshot = migrateStoredSnapshot(state.baseline.snapshot)
     if (snapshot) state.baseline.snapshot = snapshot
     else state.baseline = undefined
+  }
+  if (state.pendingWrite) {
+    const snapshot = migrateStoredSnapshot(state.pendingWrite.parentSnapshot)
+    if (snapshot) state.pendingWrite.parentSnapshot = snapshot
+    else state.pendingWrite = undefined
   }
   if (state.conflict) {
     const base = migrateStoredSnapshot(state.conflict.base)
@@ -257,7 +269,12 @@ export class GistSyncService {
       }
       await bookmarkRepository.importSnapshot(remote.document.data, 'replace', local)
       const upgraded = await this.upgradeLegacyRemote(credentials, remote, remote.document.data)
-      return this.saveSynced(credentials, upgraded, remote.document.data)
+      return this.saveSynced(
+        credentials,
+        upgraded.remote,
+        remote.document.data,
+        upgraded.pendingWrite,
+      )
     }
 
     const next = mode === 'merge' ? mergeInitialSnapshots(local, remote.document.data) : local
@@ -277,13 +294,15 @@ export class GistSyncService {
         pushed.remote.document.sync.revisionId,
       )
     }
-    return this.saveSynced(credentials, pushed.remote, next)
+    return this.saveSynced(credentials, pushed.remote, next, pushed.pendingWrite)
   }
 
   private async syncInternal(attempt = 0): Promise<GistSyncViewState> {
     const stored = await readStoredState()
     if (!stored.credentials) return { status: 'disconnected', error: stored.error }
-    if (stored.status === 'conflict' && stored.conflict) return viewOf(stored)
+    if (stored.status === 'conflict' && stored.conflict) {
+      return this.recoverCompletedWrite(stored)
+    }
     if (!stored.baseline) {
       throw new Error('同步基线已丢失，请断开后重新绑定 Gist。')
     }
@@ -292,11 +311,45 @@ export class GistSyncService {
     const remote = await readGist(stored.credentials.token, stored.credentials.gistId)
     // 远端请求期间 popup 仍可能写入收藏，因此必须在请求完成后读取本机快照。
     const local = await bookmarkRepository.load()
-    const baseline = stored.baseline
+    let baseline = stored.baseline
+
+    if (stored.pendingWrite) {
+      const parentStillVisible =
+        remote.document.sync.revisionId === stored.pendingWrite.parentRevisionId &&
+        sameSnapshot(remote.document.data, stored.pendingWrite.parentSnapshot)
+      if (parentStillVisible) {
+        const pending: StoredGistSyncState = {
+          ...stored,
+          status: 'syncing',
+          error: undefined,
+        }
+        await writeStoredState(pending)
+        return viewOf(pending)
+      }
+
+      const writeVisible =
+        remote.document.sync.revisionId === baseline.revisionId &&
+        sameSnapshot(remote.document.data, baseline.snapshot)
+      const directDescendantVisible =
+        remote.document.sync.parentRevisionId === baseline.revisionId
+
+      // 未确认写入若被基于旧父版本的并发 PATCH 覆盖，必须从旧父基线重新合并。
+      if (!writeVisible && !directDescendantVisible) {
+        baseline = {
+          revisionId: stored.pendingWrite.parentRevisionId,
+          snapshot: stored.pendingWrite.parentSnapshot,
+        }
+      }
+    }
 
     if (sameSnapshot(local, remote.document.data)) {
       const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, local)
-      return this.saveSynced(stored.credentials, upgraded, local)
+      return this.saveSynced(
+        stored.credentials,
+        upgraded.remote,
+        local,
+        upgraded.pendingWrite,
+      )
     }
 
     const localChanged = !sameSnapshot(local, baseline.snapshot)
@@ -307,7 +360,12 @@ export class GistSyncService {
       if (interrupted) return interrupted
       await bookmarkRepository.importSnapshot(remote.document.data, 'replace', local)
       const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, remote.document.data)
-      return this.saveSynced(stored.credentials, upgraded, remote.document.data)
+      return this.saveSynced(
+        stored.credentials,
+        upgraded.remote,
+        remote.document.data,
+        upgraded.pendingWrite,
+      )
     }
 
     if (localChanged && !remoteChanged) {
@@ -321,12 +379,17 @@ export class GistSyncService {
           pushed.remote.document.sync.revisionId,
         )
       }
-      return this.saveSynced(stored.credentials, pushed.remote, local)
+      return this.saveSynced(stored.credentials, pushed.remote, local, pushed.pendingWrite)
     }
 
     if (!localChanged && !remoteChanged) {
       const upgraded = await this.upgradeLegacyRemote(stored.credentials, remote, local)
-      return this.saveSynced(stored.credentials, upgraded, local)
+      return this.saveSynced(
+        stored.credentials,
+        upgraded.remote,
+        local,
+        upgraded.pendingWrite,
+      )
     }
 
     const merged = mergeThreeWaySnapshots(baseline.snapshot, local, remote.document.data)
@@ -365,7 +428,42 @@ export class GistSyncService {
         pushed.remote.document.sync.revisionId,
       )
     }
-    return this.saveSynced(stored.credentials, pushed.remote, merged.snapshot)
+    return this.saveSynced(
+      stored.credentials,
+      pushed.remote,
+      merged.snapshot,
+      pushed.pendingWrite,
+    )
+  }
+
+  /**
+   * 自动清理旧版本因写后短暂读到父 revision 而保存的假冲突。
+   *
+   * 只有远端已经精确等于冲突本机侧、revision 直接继承冲突记录的远端版本，
+   * 且本机数据此后没有变化时才更新基线；其他冲突继续等待用户选择。
+   */
+  private async recoverCompletedWrite(stored: StoredGistSyncState): Promise<GistSyncViewState> {
+    const conflict = stored.conflict
+    if (!stored.credentials || !conflict) return viewOf(stored)
+
+    try {
+      const remote = await readGist(stored.credentials.token, stored.credentials.gistId)
+      const local = await bookmarkRepository.load()
+      if (
+        remote.document.sync.parentRevisionId !== conflict.remoteRevisionId ||
+        !sameSnapshot(remote.document.data, conflict.local) ||
+        !sameSnapshot(local, conflict.local)
+      ) {
+        return viewOf(stored)
+      }
+
+      // 网络请求完成后再确认一次，避免用已过期的本机快照建立新基线。
+      if (!sameSnapshot(local, await bookmarkRepository.load())) return viewOf(stored)
+      return this.saveSynced(stored.credentials, remote, local)
+    } catch {
+      // 自动修复失败不能隐藏原冲突；后续打开 popup 或浏览器启动时会再次检查。
+      return viewOf(stored)
+    }
   }
 
   /**
@@ -440,22 +538,45 @@ export class GistSyncService {
         pushed.remote.document.sync.revisionId,
       )
     }
-    return this.saveSynced(stored.credentials, pushed.remote, resolved.snapshot)
+    return this.saveSynced(
+      stored.credentials,
+      pushed.remote,
+      resolved.snapshot,
+      pushed.pendingWrite,
+    )
   }
 
   private async pushSnapshot(
     credentials: GistCredentials,
     snapshot: CollectionSnapshot,
     remote: RemoteGist,
-  ): Promise<{ remote: RemoteGist; verified: boolean }> {
+  ): Promise<PushSnapshotResult> {
     const document = createGistDocument(snapshot, remote.document.sync.revisionId)
-    await updateGist(credentials, document)
-    const verified = await readGist(credentials.token, credentials.gistId)
+    const updated = await updateGist(credentials, document)
+    const updateAccepted =
+      updated.document.sync.revisionId === document.sync.revisionId &&
+      sameSnapshot(updated.document.data, snapshot)
+    if (!updateAccepted) return { remote: updated, verified: false }
+
+    const visible = await readGist(credentials.token, credentials.gistId)
+    const updateVisible =
+      visible.document.sync.revisionId === document.sync.revisionId &&
+      sameSnapshot(visible.document.data, snapshot)
+    if (updateVisible) return { remote: visible, verified: true }
+
+    // Gist 的 PATCH 已返回新内容，但紧随其后的 GET 可能短暂仍返回写入前的父 revision。
+    const parentStillVisible =
+      visible.document.sync.revisionId === remote.document.sync.revisionId &&
+      sameSnapshot(visible.document.data, remote.document.data)
     return {
-      remote: verified,
-      verified:
-        verified.document.sync.revisionId === document.sync.revisionId &&
-        sameSnapshot(verified.document.data, snapshot),
+      remote: parentStillVisible ? updated : visible,
+      verified: parentStillVisible,
+      pendingWrite: parentStillVisible
+        ? {
+            parentRevisionId: remote.document.sync.revisionId,
+            parentSnapshot: clone(remote.document.data),
+          }
+        : undefined,
     }
   }
 
@@ -464,19 +585,20 @@ export class GistSyncService {
     credentials: GistCredentials,
     remote: RemoteGist,
     snapshot: CollectionSnapshot,
-  ): Promise<RemoteGist> {
-    if (remote.document.sync.protocolVersion === 2) return remote
+  ): Promise<PushSnapshotResult> {
+    if (remote.document.sync.protocolVersion === 2) return { remote, verified: true }
     const pushed = await this.pushSnapshot(credentials, snapshot, remote)
     if (!pushed.verified) {
       throw new Error('升级 Gist 同步格式时远端数据发生变化，请重新同步。')
     }
-    return pushed.remote
+    return pushed
   }
 
   private async saveSynced(
     credentials: GistCredentials,
     remote: RemoteGist,
     snapshot: CollectionSnapshot,
+    pendingWrite?: GistPendingWrite,
   ): Promise<GistSyncViewState> {
     const state: StoredGistSyncState = {
       credentials,
@@ -484,7 +606,8 @@ export class GistSyncService {
         revisionId: remote.document.sync.revisionId,
         snapshot: clone(snapshot),
       },
-      status: 'synced',
+      pendingWrite: pendingWrite ? clone(pendingWrite) : undefined,
+      status: pendingWrite ? 'syncing' : 'synced',
       lastSyncedAt: new Date().toISOString(),
     }
     await writeStoredState(state)
@@ -509,6 +632,7 @@ export class GistSyncService {
     }
     const state: StoredGistSyncState = {
       ...stored,
+      pendingWrite: undefined,
       status: 'conflict',
       error: undefined,
       conflict,

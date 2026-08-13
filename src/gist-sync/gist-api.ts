@@ -190,7 +190,8 @@ function remoteFromResponse(value: unknown): RemoteGist {
 
 /** 读取并校验一个已绑定的 LinkDeck Gist。 */
 export async function readGist(token: string, gistId: string): Promise<RemoteGist> {
-  const response = await request(`/gists/${gistId}`, token)
+  // GitHub Gist GET 可缓存 60 秒；写后校验必须绕过旧响应，避免误报并发冲突。
+  const response = await request(`/gists/${gistId}`, token, { cache: 'no-store' })
   return remoteFromResponse(await response.json())
 }
 
@@ -214,12 +215,12 @@ export async function createGist(token: string, snapshot: CollectionSnapshot): P
   return { id: created.id, url: created.html_url, document: clone(document) }
 }
 
-/** 使用同一个文件名更新 LinkDeck Gist 的完整同步快照。 */
+/** 使用同一个文件名更新 LinkDeck Gist，并返回 GitHub 已接受的完整同步快照。 */
 export async function updateGist(
   credentials: GistCredentials,
   document: GistSyncDocument,
-): Promise<void> {
-  await request(`/gists/${credentials.gistId}`, credentials.token, {
+): Promise<RemoteGist> {
+  const response = await request(`/gists/${credentials.gistId}`, credentials.token, {
     method: 'PATCH',
     body: JSON.stringify({
       files: {
@@ -227,4 +228,5 @@ export async function updateGist(
       },
     }),
   })
+  return remoteFromResponse(await response.json())
 }

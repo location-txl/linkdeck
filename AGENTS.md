@@ -13,7 +13,7 @@ Static extension files are under `public/`. Store artwork lives in `assets/` and
 - `pnpm test` runs Vitest once; `pnpm test:watch` reruns tests while editing.
 - `pnpm build` type-checks with `tsc --noEmit` and builds the extension into `dist/`.
 - `pnpm check` runs tests and the production build; use it before a pull request.
-- `pnpm package` rebuilds and creates `release/linkdeck-v1.0.0.zip`.
+- `pnpm package` rebuilds and creates `release/linkdeck-v1.0.1.zip`.
 
 ## Coding Style & Naming Conventions
 
