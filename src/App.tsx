@@ -7,7 +7,7 @@ import { TagInput } from './components/TagInput'
 import { DataTransferModal } from './data-transfer/DataTransferModal'
 import { getGistSyncStatus, requestGistSync, subscribeGistSyncStatus } from './gist-sync/client'
 import type { GistSyncViewState } from './gist-sync/types'
-import { getCurrentPageDraft, openBookmark } from './lib/chrome-api'
+import { getCurrentPageDraft, openBookmark, openManagerPage } from './lib/chrome-api'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { getHostname, UserFacingError } from './lib/bookmark-utils'
 import { getTagClickMode, getTagFilter, setTagClickMode, setTagFilter as saveTagFilter } from './lib/preferences'
@@ -49,7 +49,7 @@ function sanitizeFilter(filter: TagFilter, tags: Tag[]): TagFilter {
   return { tagIds: filter.tagIds.filter((tagId) => validIds.has(tagId)), untaggedOnly: false }
 }
 
-export default function App() {
+export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) {
   const [snapshot, setSnapshot] = useState<CollectionSnapshot | null>(null)
   const [tagFilter, setFilterState] = useState<TagFilter>({ tagIds: [], untaggedOnly: false })
   const [error, setError] = useState<string>()
@@ -264,7 +264,7 @@ export default function App() {
 
   if (!snapshot) {
     return (
-      <main className="app-shell app-shell--loading">
+      <main className={`app-shell app-shell--loading ${view === 'manager' ? 'app-shell--manager' : ''}`}>
         <div className="loading-card"><span className="loading-card__mark"><Icon name="deck" size={22} /></span><span>正在整理你的链接…</span></div>
       </main>
     )
@@ -276,14 +276,15 @@ export default function App() {
     snapshot.bookmarks.filter((bookmark) => bookmark.tagIds.includes(tag.id)).length,
   ]))
   return (
-    <main className="app-shell">
+    <main className={`app-shell ${view === 'manager' ? 'app-shell--manager' : ''}`}>
       <header className="topbar">
         <div className="brand">
           <span className="brand__mark" aria-hidden="true"><Icon name="deck" size={20} /></span>
-          <div><span className="brand__eyebrow">PERSONAL LINKS</span><h1>LinkDeck</h1></div>
+          <div><span className="brand__eyebrow">{view === 'manager' ? 'LINK MANAGER' : 'PERSONAL LINKS'}</span><h1>LinkDeck</h1></div>
         </div>
         <div className="topbar__actions">
           <span className="sync-state" title={gistSyncTitle(gistSyncState)}><Icon name="cloud" size={15} /><span>{gistSyncLabel(gistSyncState)}</span></span>
+          {view === 'popup' && <button className="icon-button" type="button" onClick={() => void openManagerPage()} aria-label="全屏管理" title="在新标签页中管理"><Icon name="expand" /></button>}
           <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="设置" title="设置"><Icon name="settings" /></button>
           <button className="icon-button" type="button" onClick={() => setDataManagerOpen(true)} aria-label="数据管理" title="数据管理"><Icon name="more" /></button>
           <button className="icon-button" type="button" onClick={() => setTagManagerOpen(true)} aria-label="管理标签" title="管理标签"><Icon name="layers" /></button>
@@ -300,7 +301,7 @@ export default function App() {
 
       <section className="collection-bar" aria-label="链接导航">
         <div className="collection-bar__heading"><span>链接收藏</span><b>{snapshot.bookmarks.length}</b></div>
-        <button className="current-page-button" type="button" onClick={() => void openCurrentPageForm()}><Icon name="bookmark-add" size={16} />收藏当前页</button>
+        {view === 'popup' && <button className="current-page-button" type="button" onClick={() => void openCurrentPageForm()}><Icon name="bookmark-add" size={16} />收藏当前页</button>}
       </section>
 
       <TagFilterBar
@@ -340,7 +341,7 @@ export default function App() {
             ))}
           </div>
         ) : (
-          <EmptyState searching={isSearching} query={searchQuery.trim()} onClear={() => setSearchQuery('')} onAddCurrent={() => void openCurrentPageForm()} onAddManual={openManualForm} />
+          <EmptyState searching={isSearching} query={searchQuery.trim()} onClear={() => setSearchQuery('')} onAddCurrent={view === 'popup' ? () => void openCurrentPageForm() : undefined} onAddManual={openManualForm} />
         )}
       </section>
 
@@ -385,11 +386,11 @@ function gistSyncTitle(state: GistSyncViewState): string {
   return state.status === 'disconnected' ? '已保存到浏览器同步存储' : state.error ?? gistSyncLabel(state)
 }
 
-function EmptyState({ searching, query, onClear, onAddCurrent, onAddManual }: { searching: boolean; query: string; onClear: () => void; onAddCurrent: () => void; onAddManual: () => void }) {
+function EmptyState({ searching, query, onClear, onAddCurrent, onAddManual }: { searching: boolean; query: string; onClear: () => void; onAddCurrent?: () => void; onAddManual: () => void }) {
   if (searching) {
     return <div className="empty-state empty-state--search"><span className="empty-state__mark"><Icon name="search" size={23} /></span><h3>没有找到“{query}”</h3><p>试试其他关键词，或调整标签筛选。</p><button className="button button--quiet" type="button" onClick={onClear}>清除搜索</button></div>
   }
-  return <div className="empty-state"><span className="empty-state__mark"><Icon name="link" size={23} /></span><h3>这里还没有链接</h3><p>添加常用网站，再用标签把它们灵活整理好。</p><div className="empty-state__actions"><button className="button button--ink" type="button" onClick={onAddCurrent}><Icon name="bookmark-add" size={16} />收藏当前页</button><button className="button button--quiet" type="button" onClick={onAddManual}><Icon name="add" size={16} />手动添加</button></div></div>
+  return <div className="empty-state"><span className="empty-state__mark"><Icon name="link" size={23} /></span><h3>这里还没有链接</h3><p>添加常用网站，再用标签把它们灵活整理好。</p><div className="empty-state__actions">{onAddCurrent && <button className="button button--ink" type="button" onClick={onAddCurrent}><Icon name="bookmark-add" size={16} />收藏当前页</button>}<button className="button button--quiet" type="button" onClick={onAddManual}><Icon name="add" size={16} />手动添加</button></div></div>
 }
 
 function SettingsModal({ mode, onSelectMode, onClose }: { mode: TagClickMode; onSelectMode: (mode: TagClickMode) => void; onClose: () => void }) {

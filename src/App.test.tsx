@@ -4,7 +4,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { serializeBackup } from './data-transfer/data-transfer'
 import { bookmarkRepository } from './lib/bookmark-repository'
-import { installChromeMock } from './test/chrome'
+import { installChromeMock, tabsCreate } from './test/chrome'
 
 describe('LinkDeck popup', () => {
   beforeEach(() => installChromeMock())
@@ -24,6 +24,27 @@ describe('LinkDeck popup', () => {
     await user.click(screen.getByRole('button', { name: '删除' }))
     await user.click(screen.getByRole('button', { name: '删除网站' }))
     expect(await screen.findByText('这里还没有链接')).toBeInTheDocument()
+  })
+
+  it('opens the full-screen manager in a new browser tab', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    await user.click(screen.getByRole('button', { name: '全屏管理' }))
+
+    expect(tabsCreate).toHaveBeenCalledWith({
+      url: 'chrome-extension://linkdeck/index.html?view=manager',
+    })
+  })
+
+  it('does not show the full-screen trigger inside the manager page', async () => {
+    render(<App view="manager" />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    expect(screen.queryByRole('button', { name: '全屏管理' })).not.toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: '收藏当前页' })).not.toBeInTheDocument()
+    expect(screen.getByText('LINK MANAGER')).toBeInTheDocument()
   })
 
   it('filters by all selected tags, supports untagged links, and scopes search to the filter', async () => {

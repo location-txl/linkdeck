@@ -11,6 +11,7 @@ export type IconName =
   | 'deck'
   | 'download'
   | 'edit'
+  | 'expand'
   | 'folder'
   | 'globe'
   | 'layers'
@@ -107,6 +108,12 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
         <svg {...common}>
           <path d="M4.5 19.5 8 18.7 18.2 8.5a2.1 2.1 0 0 0-3-3L5 15.7l-.5 3.8Z" />
           <path d="m13.8 6.8 3.4 3.4" />
+        </svg>
+      )
+    case 'expand':
+      return (
+        <svg {...common}>
+          <path d="M8.5 4H4v4.5M15.5 4H20v4.5M20 15.5V20h-4.5M8.5 20H4v-4.5" />
         </svg>
       )
     case 'folder':

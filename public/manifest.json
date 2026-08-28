@@ -21,7 +21,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["storage", "activeTab"],
+  "permissions": ["storage", "tabs", "contextMenus"],
   "host_permissions": ["https://api.github.com/*"],
   "background": {
     "service_worker": "assets/service-worker.js",
