@@ -47,6 +47,35 @@ describe('LinkDeck popup', () => {
     expect(screen.getByText('LINK MANAGER')).toBeInTheDocument()
   })
 
+  it('shows newer bookmarks first in the full list, tag filter, and search results', async () => {
+    await bookmarkRepository.importSnapshot({
+      meta: {
+        schemaVersion: 2,
+        tags: [{ id: 'work', name: '工作', pinned: false, createdAt: 1, updatedAt: 1 }],
+      },
+      bookmarks: [
+        { id: 'old', tagIds: ['work'], title: '旧收藏', url: 'https://old.example.com', createdAt: 100, updatedAt: 100 },
+        { id: 'new', tagIds: ['work'], title: '新收藏', url: 'https://new.example.com', createdAt: 300, updatedAt: 300 },
+        { id: 'middle', tagIds: [], title: '中间收藏', url: 'https://middle.example.com', createdAt: 200, updatedAt: 200 },
+      ],
+    }, 'replace')
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    const getRowTitles = () => screen.getAllByRole('article').map((row) =>
+      within(row).getByRole('button', { name: /^打开 / }).getAttribute('aria-label'))
+    expect(getRowTitles()).toEqual(['打开 新收藏', '打开 中间收藏', '打开 旧收藏'])
+
+    await user.click(screen.getByRole('button', { name: /工作/ }))
+    expect(await screen.findByRole('heading', { name: '工作' })).toBeInTheDocument()
+    expect(getRowTitles()).toEqual(['打开 新收藏', '打开 旧收藏'])
+
+    await user.type(screen.getByRole('searchbox', { name: '搜索收藏' }), '收藏')
+    expect(await screen.findByRole('heading', { name: '2 条结果' })).toBeInTheDocument()
+    expect(getRowTitles()).toEqual(['打开 新收藏', '打开 旧收藏'])
+  })
+
   it('filters by all selected tags, supports untagged links, and scopes search to the filter', async () => {
     const work = await bookmarkRepository.createTag('工作')
     const dev = await bookmarkRepository.createTag('开发')

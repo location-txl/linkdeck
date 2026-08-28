@@ -176,8 +176,10 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
     })
   }, [snapshot, tagFilter])
   const visibleBookmarks = useMemo(
-    () => filteredBookmarks.filter((bookmark) => !isSearching ||
-      bookmark.title.toLocaleLowerCase().includes(searchTerm) || bookmark.url.toLocaleLowerCase().includes(searchTerm)),
+    () => filteredBookmarks
+      .filter((bookmark) => !isSearching ||
+        bookmark.title.toLocaleLowerCase().includes(searchTerm) || bookmark.url.toLocaleLowerCase().includes(searchTerm))
+      .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id)),
     [filteredBookmarks, isSearching, searchTerm],
   )
 
