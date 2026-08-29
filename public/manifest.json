@@ -21,8 +21,17 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["storage", "tabs", "contextMenus"],
+  "permissions": ["storage", "tabs", "contextMenus", "activeTab", "scripting"],
   "host_permissions": ["https://api.github.com/*"],
+  "commands": {
+    "open-tab-search": {
+      "suggested_key": {
+        "default": "Ctrl+Shift+P",
+        "mac": "Command+Shift+P"
+      },
+      "description": "__MSG_searchTabsCommand__"
+    }
+  },
   "background": {
     "service_worker": "assets/service-worker.js",
     "type": "module"

@@ -7,6 +7,7 @@ type StorageListener = (changes: Record<string, StorageChange>, areaName: string
 type ActivatedListener = (activeInfo: { tabId: number; windowId: number }) => void
 type UpdatedListener = (tabId: number, changeInfo: { url?: string }, tab: { active?: boolean; url?: string }) => void
 type MockTab = { id?: number; active?: boolean; windowId?: number; title?: string; url?: string }
+type CommandListener = (command: string, tab?: MockTab) => void
 
 const listeners = new Set<StorageListener>()
 let syncStore: Store = {}
@@ -22,11 +23,14 @@ let currentTab: MockTab = {
 export const tabsCreate = vi.fn()
 export const tabsQuery = vi.fn()
 export const tabsGet = vi.fn()
+export const tabsUpdate = vi.fn()
+export const scriptingExecuteScript = vi.fn()
 export const actionSetBadgeText = vi.fn()
 export const actionSetBadgeBackgroundColor = vi.fn()
 export const actionSetTitle = vi.fn()
 export const tabsOnActivatedListeners = new Set<ActivatedListener>()
 export const tabsOnUpdatedListeners = new Set<UpdatedListener>()
+export const commandsOnCommandListeners = new Set<CommandListener>()
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -86,14 +90,19 @@ export function installChromeMock(initialSync: Store = {}) {
   tabsCreate.mockReset()
   tabsQuery.mockReset()
   tabsGet.mockReset()
+  tabsUpdate.mockReset()
+  scriptingExecuteScript.mockReset()
   actionSetBadgeText.mockReset()
   actionSetBadgeBackgroundColor.mockReset()
   actionSetTitle.mockReset()
   tabsOnActivatedListeners.clear()
   tabsOnUpdatedListeners.clear()
+  commandsOnCommandListeners.clear()
   tabsCreate.mockResolvedValue(undefined)
   tabsQuery.mockImplementation(async () => [currentTab])
   tabsGet.mockImplementation(async (tabId: number) => ({ ...currentTab, id: tabId }))
+  tabsUpdate.mockResolvedValue(undefined)
+  scriptingExecuteScript.mockResolvedValue([])
   actionSetBadgeText.mockResolvedValue(undefined)
   actionSetBadgeBackgroundColor.mockResolvedValue(undefined)
   actionSetTitle.mockResolvedValue(undefined)
@@ -125,6 +134,7 @@ export function installChromeMock(initialSync: Store = {}) {
       query: tabsQuery,
       create: tabsCreate,
       get: tabsGet,
+      update: tabsUpdate,
       onActivated: {
         addListener: (listener: ActivatedListener) => tabsOnActivatedListeners.add(listener),
         removeListener: (listener: ActivatedListener) => tabsOnActivatedListeners.delete(listener),
@@ -138,6 +148,15 @@ export function installChromeMock(initialSync: Store = {}) {
       setBadgeText: actionSetBadgeText,
       setBadgeBackgroundColor: actionSetBadgeBackgroundColor,
       setTitle: actionSetTitle,
+    },
+    commands: {
+      onCommand: {
+        addListener: (listener: CommandListener) => commandsOnCommandListeners.add(listener),
+        removeListener: (listener: CommandListener) => commandsOnCommandListeners.delete(listener),
+      },
+    },
+    scripting: {
+      executeScript: scriptingExecuteScript,
     },
     runtime: {
       getManifest: () => ({ version: '1.0.1' }),

@@ -4,8 +4,10 @@ import {
   actionSetBadgeBackgroundColor,
   actionSetBadgeText,
   actionSetTitle,
+  commandsOnCommandListeners,
   installChromeMock,
   setCurrentTab,
+  scriptingExecuteScript,
   tabsOnActivatedListeners,
   tabsOnUpdatedListeners,
   tabsQuery,
@@ -205,5 +207,26 @@ describe('Gist service worker', () => {
     await Promise.resolve()
     await Promise.resolve()
     expect(tabsQuery).toHaveBeenCalledTimes(queryCount)
+  })
+
+  it('registers the tab search command at module load and injects one fixed bundle', async () => {
+    installChromeMock()
+    await import('../service-worker')
+
+    expect(commandsOnCommandListeners).toHaveLength(1)
+    for (const listener of commandsOnCommandListeners) listener('unrelated-command', { id: 4, windowId: 2 })
+    expect(scriptingExecuteScript).not.toHaveBeenCalled()
+
+    for (const listener of commandsOnCommandListeners) listener('open-tab-search', { id: 4, windowId: 2 })
+    await Promise.resolve()
+    expect(scriptingExecuteScript).toHaveBeenCalledWith({
+      target: { tabId: 4 },
+      files: ['assets/tab-search-overlay.js'],
+    })
+
+    scriptingExecuteScript.mockRejectedValueOnce(new Error('protected page'))
+    for (const listener of commandsOnCommandListeners) listener('open-tab-search', { id: 4, windowId: 2 })
+    await Promise.resolve()
+    expect(scriptingExecuteScript).toHaveBeenCalledTimes(2)
   })
 })

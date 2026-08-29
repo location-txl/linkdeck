@@ -50,6 +50,7 @@ export default defineConfig({
       input: {
         popup: 'index.html',
         'service-worker': 'src/service-worker.ts',
+        'tab-search-overlay': 'src/tab-search/content.ts',
       },
       output: {
         entryFileNames: 'assets/[name].js',

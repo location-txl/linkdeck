@@ -6,6 +6,8 @@ import {
 import { gistSyncService, hasLinkDeckStorageChange } from './gist-sync/gist-sync'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { hasSameUrl } from './lib/bookmark-utils'
+import { isTabSearchMessage, TAB_SEARCH_COMMAND } from './tab-search/messages'
+import { handleTabSearchMessage } from './tab-search/service'
 import { MAX_BOOKMARK_TITLE_LENGTH } from './types'
 
 const LOCAL_CHANGE_DEBOUNCE_MS = 500
@@ -15,6 +17,7 @@ const SAVED_BADGE_TEXT = '✓'
 const SAVED_BADGE_COLOR = '#3f7d5f'
 const DEFAULT_ACTION_TITLE = 'LinkDeck'
 const SAVED_ACTION_TITLE = 'LinkDeck · 已收藏'
+const TAB_SEARCH_OVERLAY_FILE = 'assets/tab-search-overlay.js'
 let syncTimer: ReturnType<typeof setTimeout> | undefined
 
 type BadgeTab = {
@@ -82,6 +85,25 @@ chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
   void refreshTabBadge(tabId)
 })
 
+/** 在快捷键触发的活动网页上注入标签页搜索浮层。 */
+async function injectTabSearchOverlay(tab?: chrome.tabs.Tab): Promise<void> {
+  if (tab?.id === undefined) return
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId: tab.id },
+      files: [TAB_SEARCH_OVERLAY_FILE],
+    })
+  } catch (error: unknown) {
+    // chrome://、扩展商店和其他受保护页面不允许 activeTab 注入，只记录而不影响后台功能。
+    console.warn('打开标签页搜索浮层失败', error)
+  }
+}
+
+chrome.commands.onCommand.addListener((command, tab) => {
+  if (command !== TAB_SEARCH_COMMAND) return
+  void injectTabSearchOverlay(tab)
+})
+
 /** 创建唯一的网页右键收藏入口，更新扩展时会先清理旧菜单。 */
 function registerContextMenu(): void {
   chrome.contextMenus.removeAll(() => {
@@ -105,9 +127,15 @@ async function saveCurrentPage(pageUrl: string, title?: string): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  if (!isGistSyncMessage(message)) return undefined
-  void handleGistSyncMessage(message).then(sendResponse)
-  return true
+  if (isGistSyncMessage(message)) {
+    void handleGistSyncMessage(message).then(sendResponse)
+    return true
+  }
+  if (isTabSearchMessage(message)) {
+    void handleTabSearchMessage(message, _sender).then(sendResponse)
+    return true
+  }
+  return undefined
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
