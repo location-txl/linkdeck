@@ -1150,9 +1150,13 @@ p {
 }
 
 .tag-manager__list {
-  overflow: hidden;
+  max-height: min(360px, calc(100vh - 180px));
+  overflow-x: hidden;
+  overflow-y: auto;
   border: 1px solid var(--line);
   border-radius: 10px;
+  scrollbar-color: var(--line-strong) transparent;
+  scrollbar-width: thin;
 }
 
 .tag-manager__row {

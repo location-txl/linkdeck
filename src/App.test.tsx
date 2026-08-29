@@ -4,6 +4,7 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { serializeBackup } from './data-transfer/data-transfer'
 import { bookmarkRepository } from './lib/bookmark-repository'
+import './styles.css'
 import { installChromeMock, tabsCreate } from './test/chrome'
 
 describe('LinkDeck popup', () => {
@@ -265,6 +266,21 @@ describe('LinkDeck popup', () => {
 
     releasePin!()
     await waitFor(() => expect(within(manager).getByRole('button', { name: '置顶 工作' })).toBeEnabled())
+  })
+
+  it('enables vertical scrolling for an oversized tag manager list', async () => {
+    await Promise.all(Array.from({ length: 14 }, (_, index) => bookmarkRepository.createTag(`标签${index}`)))
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    await user.click(screen.getAllByRole('button', { name: '管理标签' })[0]!)
+    const manager = await screen.findByRole('dialog', { name: '管理标签' })
+    const list = manager.querySelector<HTMLElement>('.tag-manager__list')
+
+    expect(list).not.toBeNull()
+    expect(getComputedStyle(list!).overflowY).toBe('auto')
+    expect(getComputedStyle(list!).maxHeight).toBe('min(360px, calc(100vh - 180px))')
   })
 
   it('creates a draft tag from the input and shows it on the bookmark', async () => {
