@@ -3,6 +3,12 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { Tag, TagFilter } from '../types'
 import { Icon } from './Icon'
 
+/** 两行快捷标签分别可展示的标签数量。 */
+type QuickTagCounts = {
+  firstRow: number
+  secondRow: number
+}
+
 type TagFilterBarProps = {
   tags: Tag[]
   tagCounts: Map<string, number>
@@ -35,14 +41,17 @@ export function TagFilterBar({
   const selectedIds = useMemo(() => new Set(filter.tagIds), [filter.tagIds])
   const orderedTags = useMemo(() => tags.map((tag, index) => ({ tag, index }))
     .sort((left, right) => {
-      const priority = (item: Tag) => item.pinned ? 0 : selectedIds.has(item.id) ? 1 : 2
-      return priority(left.tag) - priority(right.tag) || left.index - right.index
+      return Number(right.tag.pinned) - Number(left.tag.pinned) || left.index - right.index
     })
-    .map(({ tag }) => tag), [selectedIds, tags])
-  const quickTagsRef = useRef<HTMLDivElement>(null)
+    .map(({ tag }) => tag), [tags])
+  const firstQuickTagsRef = useRef<HTMLDivElement>(null)
+  const secondQuickTagsRef = useRef<HTMLDivElement>(null)
   const tagMeasureRef = useRef<HTMLDivElement>(null)
   const popoverTriggerRef = useRef<HTMLButtonElement>(null)
-  const [quickTagCount, setQuickTagCount] = useState(orderedTags.length)
+  const [quickTagCounts, setQuickTagCounts] = useState<QuickTagCounts>({
+    firstRow: orderedTags.length,
+    secondRow: 0,
+  })
 
   const allActive = !filter.untaggedOnly && filter.tagIds.length === 0
   const triggerActive = filter.untaggedOnly || filter.tagIds.length > 0
@@ -59,6 +68,7 @@ export function TagFilterBar({
 
   const renderTagButton = (tag: Tag, location: 'quick' | 'popover') => {
     const active = !filter.untaggedOnly && selectedIds.has(tag.id)
+    const showCount = location === 'popover'
     return (
       <button
         className={`tag-tab ${location === 'quick' ? 'tag-tab--quick' : ''} ${active ? 'tag-tab--active' : ''}`}
@@ -78,116 +88,153 @@ export function TagFilterBar({
         }}
         title={tag.name}
       >
-        <span>{tag.name}</span><em>{tagCounts.get(tag.id) ?? 0}</em>
+        <span>{tag.name}</span>{showCount && <em>{tagCounts.get(tag.id) ?? 0}</em>}
       </button>
     )
   }
 
-  /** 根据快捷区和标签按钮的实际宽度，计算不需要折叠的连续标签数量。 */
-  const updateQuickTagCount = useCallback(() => {
-    const quickContainer = quickTagsRef.current
+  /**
+   * 根据两行快捷区和标签按钮的实际宽度，计算每行可展示的连续标签数量。
+   *
+   * 第一行不受右侧操作区限制，第二行只使用操作区左侧的剩余空间。
+   */
+  const updateQuickTagCounts = useCallback(() => {
+    const firstQuickContainer = firstQuickTagsRef.current
+    const secondQuickContainer = secondQuickTagsRef.current
     const tagMeasure = tagMeasureRef.current
-    if (!quickContainer || !tagMeasure) return
+    if (!firstQuickContainer || !secondQuickContainer || !tagMeasure) return
 
-    const availableWidth = quickContainer.getBoundingClientRect().width
+    const firstRowWidth = firstQuickContainer.getBoundingClientRect().width
+    const secondRowWidth = secondQuickContainer.getBoundingClientRect().width
     const tagButtons = Array.from(tagMeasure.querySelectorAll<HTMLElement>('.tag-tab'))
-    if (availableWidth <= 0 || tagButtons.length === 0) return
+    if (tagButtons.length === 0) {
+      setQuickTagCounts((current) => current.firstRow === 0 && current.secondRow === 0
+        ? current
+        : { firstRow: 0, secondRow: 0 })
+      return
+    }
+    if (firstRowWidth <= 0 || secondRowWidth <= 0) return
 
-    const gap = Number.parseFloat(getComputedStyle(quickContainer).gap) || 0
-    let usedWidth = 0
-    let nextCount = 0
-    for (const tagButton of tagButtons) {
-      const tagWidth = tagButton.getBoundingClientRect().width
-      const requiredWidth = tagWidth + (nextCount > 0 ? gap : 0)
-      if (usedWidth + requiredWidth > availableWidth) break
-      usedWidth += requiredWidth
-      nextCount += 1
+    const gap = Number.parseFloat(getComputedStyle(firstQuickContainer).gap) || 0
+    const tagWidths = tagButtons.map((tagButton) => tagButton.getBoundingClientRect().width)
+    const takeFittingCount = (startIndex: number, availableWidth: number) => {
+      let usedWidth = 0
+      let count = 0
+      for (let index = startIndex; index < tagWidths.length; index += 1) {
+        const requiredWidth = tagWidths[index] + (count > 0 ? gap : 0)
+        if (usedWidth + requiredWidth > availableWidth) break
+        usedWidth += requiredWidth
+        count += 1
+      }
+      return count
     }
 
-    // 至少保留第一个标签，避免极窄窗口下快捷区完全空白。
-    nextCount = Math.max(1, nextCount)
-    setQuickTagCount((current) => current === nextCount ? current : nextCount)
+    const firstRowCount = takeFittingCount(0, firstRowWidth)
+    let secondRowCount = takeFittingCount(firstRowCount, secondRowWidth)
+
+    // 极窄窗口下仍保留一个入口，避免所有标签只能从浮层寻找。
+    if (firstRowCount === 0 && secondRowCount === 0) secondRowCount = 1
+
+    setQuickTagCounts((current) => current.firstRow === firstRowCount && current.secondRow === secondRowCount
+      ? current
+      : { firstRow: firstRowCount, secondRow: secondRowCount })
   }, [orderedTags])
 
   useLayoutEffect(() => {
-    updateQuickTagCount()
-    if (!quickTagsRef.current || typeof ResizeObserver === 'undefined') return
+    updateQuickTagCounts()
+    const firstQuickContainer = firstQuickTagsRef.current
+    const secondQuickContainer = secondQuickTagsRef.current
+    if (!firstQuickContainer || !secondQuickContainer || typeof ResizeObserver === 'undefined') return
 
-    const observer = new ResizeObserver(updateQuickTagCount)
-    observer.observe(quickTagsRef.current)
+    const observer = new ResizeObserver(updateQuickTagCounts)
+    observer.observe(firstQuickContainer)
+    observer.observe(secondQuickContainer)
     return () => observer.disconnect()
-  }, [updateQuickTagCount])
+  }, [updateQuickTagCounts])
 
-  const quickTags = orderedTags.slice(0, quickTagCount)
+  const firstQuickTags = orderedTags.slice(0, quickTagCounts.firstRow)
+  const secondQuickTags = orderedTags.slice(
+    quickTagCounts.firstRow,
+    quickTagCounts.firstRow + quickTagCounts.secondRow,
+  )
 
   return (
     <nav className="tag-filter-bar" aria-label="标签筛选">
-      <button
-        className={`tag-tab ${allActive ? 'tag-tab--active' : ''}`}
-        type="button"
-        aria-pressed={allActive}
-        onClick={onSelectAll}
-      >
-        <span>全部</span><em>{totalCount}</em>
-      </button>
+      <div className="tag-filter-bar__row tag-filter-bar__row--first">
+        <button
+          className={`tag-tab ${allActive ? 'tag-tab--active' : ''}`}
+          type="button"
+          aria-pressed={allActive}
+          onClick={onSelectAll}
+        >
+          <span>全部</span><em>{totalCount}</em>
+        </button>
 
-      <div className="tag-filter-bar__quick" ref={quickTagsRef}>
-        {quickTags.map((tag) => renderTagButton(tag, 'quick'))}
+        <div className="tag-filter-bar__quick tag-filter-bar__quick--first" ref={firstQuickTagsRef}>
+          {firstQuickTags.map((tag) => renderTagButton(tag, 'quick'))}
+        </div>
       </div>
+
+      <div className="tag-filter-bar__row tag-filter-bar__row--second">
+        <div className="tag-filter-bar__quick tag-filter-bar__quick--second" ref={secondQuickTagsRef}>
+          {secondQuickTags.map((tag) => renderTagButton(tag, 'quick'))}
+        </div>
+
+        <div className="tag-filter-bar__actions">
+          <Popover.Root open={open} onOpenChange={setOpen}>
+            <Popover.Trigger
+              ref={popoverTriggerRef}
+              className={`tag-filter-bar__trigger ${triggerActive ? 'tag-filter-bar__trigger--active' : ''}`}
+              aria-label={triggerAriaLabel}
+            >
+              <span>{triggerLabel}</span>
+              <Icon className="tag-filter-bar__chevron" name="chevron-right" size={13} />
+            </Popover.Trigger>
+            <Popover.Portal>
+              <Popover.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={18}>
+                <Popover.Popup className="tag-filter-popover" aria-label="全部标签">
+                  <Popover.Title className="tag-filter-popover__title">全部标签</Popover.Title>
+                  <div className="tag-filter-popover__list">
+                    <button
+                      className={`tag-tab ${allActive ? 'tag-tab--active' : ''}`}
+                      type="button"
+                      aria-pressed={allActive}
+                      onClick={onSelectAll}
+                    >
+                      <span>全部</span><em>{totalCount}</em>
+                    </button>
+                    {orderedTags.map((tag) => renderTagButton(tag, 'popover'))}
+                    <button
+                      className={`tag-tab ${filter.untaggedOnly ? 'tag-tab--active' : ''}`}
+                      type="button"
+                      aria-pressed={filter.untaggedOnly}
+                      onClick={onToggleUntagged}
+                    >
+                      <span>无标签</span><em>{untaggedCount}</em>
+                    </button>
+                  </div>
+                </Popover.Popup>
+              </Popover.Positioner>
+            </Popover.Portal>
+          </Popover.Root>
+
+          <button
+            className="tag-tab tag-tab--add"
+            type="button"
+            onClick={() => {
+              setOpen(false)
+              onAdd()
+            }}
+            aria-label="新建标签"
+            title="新建标签"
+          >
+            <Icon name="add" size={16} />
+          </button>
+        </div>
+      </div>
+
       <div className="tag-filter-bar__measure" aria-hidden="true" ref={tagMeasureRef}>
         {orderedTags.map((tag) => renderTagButton(tag, 'quick'))}
-      </div>
-
-      <div className="tag-filter-bar__actions">
-        <Popover.Root open={open} onOpenChange={setOpen}>
-          <Popover.Trigger
-            ref={popoverTriggerRef}
-            className={`tag-filter-bar__trigger ${triggerActive ? 'tag-filter-bar__trigger--active' : ''}`}
-            aria-label={triggerAriaLabel}
-          >
-            <span>{triggerLabel}</span>
-            <Icon className="tag-filter-bar__chevron" name="chevron-right" size={13} />
-          </Popover.Trigger>
-          <Popover.Portal>
-            <Popover.Positioner side="bottom" align="end" sideOffset={6} collisionPadding={18}>
-              <Popover.Popup className="tag-filter-popover" aria-label="全部标签">
-                <Popover.Title className="tag-filter-popover__title">全部标签</Popover.Title>
-                <div className="tag-filter-popover__list">
-                  <button
-                    className={`tag-tab ${allActive ? 'tag-tab--active' : ''}`}
-                    type="button"
-                    aria-pressed={allActive}
-                    onClick={onSelectAll}
-                  >
-                    <span>全部</span><em>{totalCount}</em>
-                  </button>
-                  {orderedTags.map((tag) => renderTagButton(tag, 'popover'))}
-                  <button
-                    className={`tag-tab ${filter.untaggedOnly ? 'tag-tab--active' : ''}`}
-                    type="button"
-                    aria-pressed={filter.untaggedOnly}
-                    onClick={onToggleUntagged}
-                  >
-                    <span>无标签</span><em>{untaggedCount}</em>
-                  </button>
-                </div>
-              </Popover.Popup>
-            </Popover.Positioner>
-          </Popover.Portal>
-        </Popover.Root>
-
-        <button
-          className="tag-tab tag-tab--add"
-          type="button"
-          onClick={() => {
-            setOpen(false)
-            onAdd()
-          }}
-          aria-label="新建标签"
-          title="新建标签"
-        >
-          <Icon name="add" size={16} />
-        </button>
       </div>
     </nav>
   )
