@@ -9,6 +9,6 @@
     "message": "用多标签收藏常用网址，支持浏览器同步和可选 Gist 同步。"
   },
   "searchTabsCommand": {
-    "message": "搜索当前窗口标签页和浏览器历史记录"
+    "message": "搜索当前窗口的标签页"
   }
 }

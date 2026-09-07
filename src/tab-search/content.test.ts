@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { waitFor } from '@testing-library/react'
-import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSearchTab } from './messages'
+import type { TabSearchMessage, TabSearchResponse, TabSearchTab } from './messages'
 
 const HOST_ID = 'linkdeck-tab-search-root'
 
@@ -16,31 +16,18 @@ function createTab(overrides: Partial<TabSearchTab> = {}): TabSearchTab {
   }
 }
 
-function createHistory(overrides: Partial<TabSearchHistoryItem> = {}): TabSearchHistoryItem {
-  return {
-    id: 'history-1',
-    title: '历史页面',
-    url: 'https://history.example/guide',
-    lastVisitTime: Date.now() - 5 * 60_000,
-    ...overrides,
-  }
-}
-
-async function loadOverlay(tabs: TabSearchTab[], history: TabSearchHistoryItem[] = []) {
-  const attachShadow = vi.spyOn(HTMLElement.prototype, 'attachShadow')
+async function loadOverlay(tabs: TabSearchTab[]) {
   const sendMessage = vi.fn(async (message: TabSearchMessage): Promise<TabSearchResponse> => {
     if (message.type === 'tab-search:get-tabs') return { ok: true, tabs }
-    if (message.type === 'tab-search:get-history') return { ok: true, history }
     return { ok: true }
   })
   vi.stubGlobal('chrome', { runtime: { sendMessage } })
   await import('./content')
 
   const host = document.getElementById(HOST_ID)
-  const shadow = attachShadow.mock.results[0]?.value as ShadowRoot | undefined
-  expect(shadow).toBeTruthy()
-  await waitFor(() => expect(shadow?.querySelectorAll('[role="option"]')).toHaveLength(Math.min(tabs.length, 50)))
-  return { host: host!, shadow: shadow!, sendMessage }
+  expect(host?.shadowRoot).toBeTruthy()
+  await waitFor(() => expect(host?.shadowRoot?.querySelectorAll('[role="option"]')).toHaveLength(Math.min(tabs.length, 50)))
+  return { host: host!, shadow: host!.shadowRoot!, sendMessage }
 }
 
 describe('tab search overlay', () => {
@@ -63,7 +50,7 @@ describe('tab search overlay', () => {
     expect(document.querySelectorAll(`#${HOST_ID}`)).toHaveLength(1)
     expect(shadow.querySelectorAll('[role="option"]')).toHaveLength(50)
     expect(shadow.activeElement).toBe(input)
-    expect(host.shadowRoot).toBeNull()
+    expect(host.shadowRoot).toBe(shadow)
   })
 
   it('keeps the outside click target transparent without dimming the page', async () => {
@@ -112,152 +99,6 @@ describe('tab search overlay', () => {
 
     input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }))
     expect(document.getElementById(HOST_ID)).toBeNull()
-  })
-
-  it('switches between tabs and browser history with Tab while preserving the query', async () => {
-    const history = [createHistory({ title: 'GitHub 历史页面' })]
-    const { shadow, sendMessage } = await loadOverlay([
-      createTab({ title: 'GitHub 当前标签页' }),
-    ], history)
-    const input = shadow.querySelector('input') as HTMLInputElement
-
-    input.value = 'GitHub'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    expect(shadow.querySelector('[role="option"] .tab-search__name')?.textContent).toBe('GitHub 当前标签页')
-
-    const toHistory = new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true })
-    input.dispatchEvent(toHistory)
-    expect(toHistory.defaultPrevented).toBe(true)
-    await waitFor(() => expect(sendMessage).toHaveBeenLastCalledWith({ type: 'tab-search:get-history', query: 'GitHub' }))
-    await waitFor(() => expect(shadow.querySelector('.tab-search__scope')?.textContent).toContain('浏览器历史记录'))
-    expect(input.value).toBe('GitHub')
-    expect(shadow.querySelector('[role="option"] .tab-search__name')?.textContent).toBe('GitHub 历史页面')
-    expect(shadow.querySelector('.tab-search__time')?.textContent).toBe('5 分钟前')
-
-    const backToTabs = new KeyboardEvent('keydown', {
-      key: 'Tab',
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    })
-    input.dispatchEvent(backToTabs)
-    expect(backToTabs.defaultPrevented).toBe(true)
-    await waitFor(() => expect(shadow.querySelector('.tab-search__scope')?.textContent).toContain('当前浏览器窗口'))
-    expect(input.value).toBe('GitHub')
-    expect(shadow.querySelector('[role="option"] .tab-search__name')?.textContent).toBe('GitHub 当前标签页')
-  })
-
-  it('closes before opening a selected browser history item', async () => {
-    const history = [createHistory({ url: 'https://history.example/open' })]
-    const { shadow, sendMessage } = await loadOverlay([createTab()], history)
-    const input = shadow.querySelector('input') as HTMLInputElement
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
-    await waitFor(() => expect(shadow.querySelector('[role="option"]')).toBeTruthy())
-
-    const overlayStateAtOpen: boolean[] = []
-    sendMessage.mockImplementation(async (message: TabSearchMessage): Promise<TabSearchResponse> => {
-      if (message.type === 'tab-search:get-tabs') return { ok: true, tabs: [createTab()] }
-      if (message.type === 'tab-search:get-history') return { ok: true, history }
-      overlayStateAtOpen.push(document.getElementById(HOST_ID) !== null)
-      return { ok: true }
-    })
-
-    const historyOption = shadow.querySelector('[role="option"]') as HTMLButtonElement
-    historyOption.click()
-    await waitFor(() => expect(sendMessage).toHaveBeenLastCalledWith({
-      type: 'tab-search:open-history',
-      url: 'https://history.example/open',
-    }))
-    expect(overlayStateAtOpen).toEqual([false])
-    expect(document.getElementById(HOST_ID)).toBeNull()
-  })
-
-  it('ignores an older history response after a newer query completes', async () => {
-    const historyResponses: Array<(response: TabSearchResponse) => void> = []
-    const tabs = [createTab()]
-    const sendMessage = vi.fn((message: TabSearchMessage): Promise<TabSearchResponse> => {
-      if (message.type === 'tab-search:get-tabs') return Promise.resolve({ ok: true, tabs })
-      if (message.type === 'tab-search:get-history') {
-        return new Promise((resolve) => historyResponses.push(resolve))
-      }
-      return Promise.resolve({ ok: true })
-    })
-    vi.stubGlobal('chrome', { runtime: { sendMessage } })
-    const attachShadow = vi.spyOn(HTMLElement.prototype, 'attachShadow')
-    await import('./content')
-
-    const host = document.getElementById(HOST_ID)
-    const shadow = attachShadow.mock.results[0]?.value as ShadowRoot
-    await waitFor(() => expect(shadow.querySelectorAll('[role="option"]')).toHaveLength(1))
-    const input = shadow.querySelector('input') as HTMLInputElement
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
-    await waitFor(() => expect(historyResponses).toHaveLength(1))
-
-    input.value = 'new'
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    await waitFor(() => expect(historyResponses).toHaveLength(2))
-
-    historyResponses[1]({ ok: true, history: [createHistory({ title: 'new 结果' })] })
-    await waitFor(() => expect(shadow.querySelector('.tab-search__name')?.textContent).toBe('new 结果'))
-    historyResponses[0]({ ok: true, history: [createHistory({ title: 'old 结果' })] })
-    await Promise.resolve()
-    expect(shadow.querySelector('.tab-search__name')?.textContent).toBe('new 结果')
-  })
-
-  it('keeps the newest tab snapshot when refresh responses arrive out of order', async () => {
-    const tabResponses: Array<(response: TabSearchResponse) => void> = []
-    const sendMessage = vi.fn((message: TabSearchMessage): Promise<TabSearchResponse> => {
-      if (message.type === 'tab-search:get-tabs') {
-        return new Promise((resolve) => tabResponses.push(resolve))
-      }
-      return Promise.resolve({ ok: true })
-    })
-    vi.stubGlobal('chrome', { runtime: { sendMessage } })
-    const attachShadow = vi.spyOn(HTMLElement.prototype, 'attachShadow')
-    await import('./content')
-
-    const host = document.getElementById(HOST_ID)
-    const shadow = attachShadow.mock.results[0]?.value as ShadowRoot
-    await waitFor(() => expect(tabResponses).toHaveLength(1))
-
-    host!.dispatchEvent(new CustomEvent('linkdeck:refresh'))
-    await waitFor(() => expect(tabResponses).toHaveLength(2))
-
-    tabResponses[1]({ ok: true, tabs: [createTab({ title: '新标签页' })] })
-    await waitFor(() => expect(shadow.querySelector('.tab-search__name')?.textContent).toBe('新标签页'))
-
-    tabResponses[0]({ ok: true, tabs: [createTab({ title: '旧标签页' })] })
-    await Promise.resolve()
-    const input = shadow.querySelector('input') as HTMLInputElement
-    input.dispatchEvent(new Event('input', { bubbles: true }))
-    expect(shadow.querySelector('.tab-search__name')?.textContent).toBe('新标签页')
-  })
-
-  it('shows history errors and can return to the tab source', async () => {
-    const tabs = [createTab({ title: '可用标签页' })]
-    const sendMessage = vi.fn(async (message: TabSearchMessage): Promise<TabSearchResponse> => {
-      if (message.type === 'tab-search:get-tabs') return { ok: true, tabs }
-      if (message.type === 'tab-search:get-history') return { ok: false, error: '历史权限不可用' }
-      return { ok: true }
-    })
-    vi.stubGlobal('chrome', { runtime: { sendMessage } })
-    const attachShadow = vi.spyOn(HTMLElement.prototype, 'attachShadow')
-    await import('./content')
-
-    const host = document.getElementById(HOST_ID)
-    const shadow = attachShadow.mock.results[0]?.value as ShadowRoot
-    await waitFor(() => expect(shadow.querySelectorAll('[role="option"]')).toHaveLength(1))
-    const input = shadow.querySelector('input') as HTMLInputElement
-    input.dispatchEvent(new KeyboardEvent('keydown', { key: 'Tab', bubbles: true, cancelable: true }))
-    await waitFor(() => expect(shadow.querySelector('.tab-search__empty strong')?.textContent).toBe('无法读取浏览器历史记录'))
-
-    input.dispatchEvent(new KeyboardEvent('keydown', {
-      key: 'Tab',
-      shiftKey: true,
-      bubbles: true,
-      cancelable: true,
-    }))
-    await waitFor(() => expect(shadow.querySelector('.tab-search__name')?.textContent).toBe('可用标签页'))
   })
 
   it('refreshes an existing host instead of mounting a second overlay', async () => {

@@ -1,15 +1,11 @@
-import { searchHistory, searchTabs } from './fuzzy-search'
-import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSearchTab } from './messages'
+import { searchTabs } from './fuzzy-search'
+import type { TabSearchMessage, TabSearchResponse, TabSearchTab } from './messages'
 
 (() => {
   const HOST_ID = 'linkdeck-tab-search-root'
   const REFRESH_EVENT = 'linkdeck:refresh'
   const GET_TABS_MESSAGE = 'tab-search:get-tabs'
-  const GET_HISTORY_MESSAGE = 'tab-search:get-history'
   const ACTIVATE_TAB_MESSAGE = 'tab-search:activate-tab'
-  const OPEN_HISTORY_MESSAGE = 'tab-search:open-history'
-  const SEARCH_SOURCES = ['tabs', 'history'] as const
-  type SearchSource = typeof SEARCH_SOURCES[number]
 
   const STYLES = `
     :host {
@@ -343,14 +339,6 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       white-space: nowrap;
     }
 
-    .tab-search__time {
-      display: block;
-      margin-top: 3px;
-      color: #9d958a;
-      font-size: 9px;
-      line-height: 1.25;
-    }
-
     .tab-search__index {
       display: grid;
       min-width: 25px;
@@ -476,7 +464,6 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       }
 
       .tab-search__url,
-      .tab-search__time,
       .tab-search__index,
       .tab-search__empty span,
       .tab-search__footer,
@@ -503,8 +490,8 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
     return element
   }
 
-  function errorMessage(error: unknown, fallback = '读取标签页失败，请重新尝试。'): string {
-    return error instanceof Error ? error.message : fallback
+  function errorMessage(error: unknown): string {
+    return error instanceof Error ? error.message : '读取标签页失败，请重新尝试。'
   }
 
   function isSafeFaviconUrl(value: string): boolean {
@@ -515,50 +502,19 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
     }
   }
 
-  /** 将历史记录时间转换为稳定、易读的相对时间，缺失时间时保留明确占位。 */
-  function formatHistoryTime(lastVisitTime?: number): string {
-    if (lastVisitTime === undefined || !Number.isFinite(lastVisitTime)) return '访问时间未知'
-
-    const elapsed = Math.max(0, Date.now() - lastVisitTime)
-    const minutes = Math.floor(elapsed / 60_000)
-    if (minutes < 1) return '刚刚'
-    if (minutes < 60) return `${minutes} 分钟前`
-
-    const hours = Math.floor(minutes / 60)
-    if (hours < 24) return `${hours} 小时前`
-    if (hours < 48) return '昨天'
-
-    const days = Math.floor(hours / 24)
-    if (days < 30) return `${days} 天前`
-
-    const date = new Date(lastVisitTime)
-    const month = String(date.getMonth() + 1).padStart(2, '0')
-    const day = String(date.getDate()).padStart(2, '0')
-    return `${date.getFullYear()}-${month}-${day}`
-  }
-
   class TabSearchOverlay {
     private readonly host: HTMLDivElement
     private readonly input: HTMLInputElement
-    private readonly palette: HTMLElement
-    private readonly scope: HTMLDivElement
-    private readonly hintLabel: HTMLSpanElement
     private readonly count: HTMLSpanElement
     private readonly results: HTMLDivElement
     private readonly empty: HTMLDivElement
     private readonly status: HTMLSpanElement
     private tabs: TabSearchTab[] = []
-    private history: TabSearchHistoryItem[] = []
     private visibleTabs: TabSearchTab[] = []
-    private visibleHistory: TabSearchHistoryItem[] = []
     private query = ''
-    private source: SearchSource = 'tabs'
     private selectedIndex = 0
-    private tabsLoading = true
-    private historyLoading = false
+    private loading = true
     private error: string | undefined
-    private tabsRequestVersion = 0
-    private historyRequestVersion = 0
     private closed = false
 
     constructor(host: HTMLDivElement, shadow: ShadowRoot) {
@@ -573,10 +529,10 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       backdrop.setAttribute('aria-label', '关闭标签页搜索')
       backdrop.addEventListener('click', () => this.close())
 
-      this.palette = createElement('section', 'tab-search__palette')
-      this.palette.setAttribute('role', 'dialog')
-      this.palette.setAttribute('aria-modal', 'true')
-      this.palette.setAttribute('aria-label', '搜索标签页')
+      const palette = createElement('section', 'tab-search__palette')
+      palette.setAttribute('role', 'dialog')
+      palette.setAttribute('aria-modal', 'true')
+      palette.setAttribute('aria-label', '搜索标签页')
 
       const header = createElement('header', 'tab-search__header')
       const brand = createElement('div', 'tab-search__brand')
@@ -588,9 +544,9 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       eyebrow.textContent = 'LINKDECK / QUICK SWITCH'
       const title = createElement('h1', 'tab-search__title')
       title.textContent = '搜索标签页'
-      this.scope = createElement('div', 'tab-search__scope')
-      this.scope.textContent = '当前浏览器窗口 · 输入即定位'
-      brandCopy.append(eyebrow, title, this.scope)
+      const scope = createElement('div', 'tab-search__scope')
+      scope.textContent = '当前浏览器窗口 · 输入即定位'
+      brandCopy.append(eyebrow, title, scope)
       brand.append(mark, brandCopy)
 
       const closeButton = createElement('button', 'tab-search__close')
@@ -614,11 +570,7 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       this.input.addEventListener('input', () => {
         this.query = this.input.value
         this.selectedIndex = 0
-        if (this.source === 'history') {
-          void this.loadHistory(false)
-        } else {
-          this.render()
-        }
+        this.render()
       })
       this.input.addEventListener('keydown', this.handleKeyDown)
       const shortcut = createElement('span', 'tab-search__shortcut')
@@ -629,10 +581,9 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       field.append(glyph, this.input, shortcut)
 
       const hint = createElement('div', 'tab-search__hint')
-      this.hintLabel = createElement('span')
-      this.hintLabel.textContent = 'Tab 切换来源　·　↑ ↓ 选择　·　Enter 打开　·　Esc 关闭'
+      hint.textContent = '↑ ↓ 选择　·　Enter 打开　·　Esc 关闭'
       this.count = createElement('span', 'tab-search__count')
-      hint.append(this.hintLabel, this.count)
+      hint.append(this.count)
 
       this.results = createElement('div', 'tab-search__results')
       this.results.id = 'linkdeck-tab-search-results'
@@ -649,8 +600,8 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       source.textContent = '本地读取 · 不上传'
       footer.append(this.status, source)
 
-      this.palette.append(header, field, hint, this.results, this.empty, footer)
-      layer.append(backdrop, this.palette)
+      palette.append(header, field, hint, this.results, this.empty, footer)
+      layer.append(backdrop, palette)
       shadow.append(style, layer)
     }
 
@@ -663,24 +614,10 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
 
     private readonly handleRefresh = () => {
       if (this.closed) return
-      if (this.source === 'history') {
-        void this.loadHistory(true)
-      } else {
-        void this.loadTabs(true)
-      }
+      void this.loadTabs(true)
     }
 
     private readonly handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === 'Tab') {
-        event.preventDefault()
-        event.stopPropagation()
-        const currentIndex = SEARCH_SOURCES.indexOf(this.source)
-        const direction = event.shiftKey ? -1 : 1
-        const nextIndex = (currentIndex + direction + SEARCH_SOURCES.length) % SEARCH_SOURCES.length
-        this.switchSource(SEARCH_SOURCES[nextIndex])
-        return
-      }
-
       if (event.key === 'Escape') {
         event.preventDefault()
         this.close()
@@ -688,51 +625,25 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       }
 
       if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
-        const visibleItems = this.source === 'history' ? this.visibleHistory : this.visibleTabs
-        if (visibleItems.length === 0) return
+        if (this.visibleTabs.length === 0) return
         event.preventDefault()
         const direction = event.key === 'ArrowDown' ? 1 : -1
-        this.selectedIndex = (this.selectedIndex + direction + visibleItems.length) % visibleItems.length
+        this.selectedIndex = (this.selectedIndex + direction + this.visibleTabs.length) % this.visibleTabs.length
         this.render()
         this.scrollSelectionIntoView()
         return
       }
 
-      if (event.key !== 'Enter') return
-      if (this.source === 'history' && this.visibleHistory[this.selectedIndex]) {
-        event.preventDefault()
-        void this.openHistory(this.visibleHistory[this.selectedIndex])
-        return
-      }
-
-      if (this.source === 'tabs' && this.visibleTabs[this.selectedIndex]) {
+      if (event.key === 'Enter' && this.visibleTabs[this.selectedIndex]) {
         event.preventDefault()
         void this.selectTab(this.visibleTabs[this.selectedIndex])
       }
     }
 
-    /** 切换搜索数据源并保留关键词；历史源切换时会触发一次后台查询。 */
-    private switchSource(source: SearchSource): void {
-      if (source === this.source) return
-      this.source = source
-      this.selectedIndex = 0
-      this.error = undefined
-      if (source === 'history') {
-        void this.loadHistory(false)
-      } else {
-        this.historyRequestVersion += 1
-        this.render()
-      }
-      this.focusSearch(false)
-    }
-
     private async loadTabs(selectQuery: boolean): Promise<void> {
-      const requestVersion = ++this.tabsRequestVersion
-      this.tabsLoading = true
-      if (this.source === 'tabs') {
-        this.error = undefined
-        this.render()
-      }
+      this.loading = true
+      this.error = undefined
+      this.render()
 
       try {
         const message: TabSearchMessage = { type: GET_TABS_MESSAGE }
@@ -741,49 +652,15 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
         if (!response.ok) throw new Error(response.error)
         if (!('tabs' in response)) throw new Error('标签页数据格式无效。')
 
-        if (requestVersion !== this.tabsRequestVersion) return
         this.tabs = response.tabs
-        this.tabsLoading = false
-        if (this.closed || this.source !== 'tabs') return
+        this.loading = false
         this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, searchTabs(this.tabs, this.query).length - 1))
         this.render()
         this.focusSearch(selectQuery)
       } catch (error: unknown) {
-        if (this.closed || requestVersion !== this.tabsRequestVersion) return
-        this.tabsLoading = false
-        if (this.source !== 'tabs') return
+        if (this.closed) return
+        this.loading = false
         this.error = errorMessage(error)
-        this.render()
-        this.focusSearch(selectQuery)
-      }
-    }
-
-    /** 查询当前关键词的浏览器历史记录，并丢弃已经过时或离开历史模式的响应。 */
-    private async loadHistory(selectQuery: boolean): Promise<void> {
-      const requestVersion = ++this.historyRequestVersion
-      this.historyLoading = true
-      this.history = []
-      this.error = undefined
-      this.render()
-
-      try {
-        const message: TabSearchMessage = { type: GET_HISTORY_MESSAGE, query: this.query }
-        const response = await chrome.runtime.sendMessage(message) as TabSearchResponse | undefined
-        if (this.closed || this.source !== 'history' || requestVersion !== this.historyRequestVersion) return
-        if (!response) throw new Error('读取浏览器历史记录失败，请重新尝试。')
-        if (!response.ok) throw new Error(response.error)
-        if (!('history' in response)) throw new Error('浏览器历史记录数据格式无效。')
-
-        this.history = response.history
-        this.historyLoading = false
-        this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, searchHistory(this.history, this.query).length - 1))
-        this.render()
-        this.focusSearch(selectQuery)
-      } catch (error: unknown) {
-        if (this.closed || this.source !== 'history' || requestVersion !== this.historyRequestVersion) return
-        this.historyLoading = false
-        this.history = []
-        this.error = errorMessage(error, '读取浏览器历史记录失败，请重新尝试。')
         this.render()
         this.focusSearch(selectQuery)
       }
@@ -791,127 +668,69 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
 
     private render(): void {
       this.visibleTabs = searchTabs(this.tabs, this.query)
-      this.visibleHistory = searchHistory(this.history, this.query)
-      const isHistory = this.source === 'history'
-      const visibleItems = isHistory ? this.visibleHistory : this.visibleTabs
-      const sourceItems = isHistory ? this.history : this.tabs
-      const loading = isHistory ? this.historyLoading : this.tabsLoading
-      this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, visibleItems.length - 1))
-      this.scope.textContent = isHistory ? '浏览器历史记录 · 最近访问' : '当前浏览器窗口 · 输入即定位'
-      this.hintLabel.textContent = 'Tab 切换来源　·　↑ ↓ 选择　·　Enter 打开　·　Esc 关闭'
-      this.palette.setAttribute('aria-label', isHistory ? '搜索浏览器历史记录' : '搜索标签页')
-      this.input.setAttribute('aria-label', isHistory ? '搜索浏览器历史记录' : '搜索标签页')
-      this.results.setAttribute('aria-label', isHistory ? '浏览器历史记录' : '当前窗口标签页')
-      this.count.textContent = loading ? '读取中…' : `${visibleItems.length} / ${sourceItems.length}`
-      this.status.textContent = this.error
-        ? this.error
-        : loading
-          ? isHistory ? '正在读取浏览器历史记录…' : '正在读取标签页…'
-          : isHistory ? `${this.history.length} 条历史记录` : `${this.tabs.length} 个标签页`
+      this.selectedIndex = Math.min(this.selectedIndex, Math.max(0, this.visibleTabs.length - 1))
+      this.count.textContent = this.loading ? '读取中…' : `${this.visibleTabs.length} / ${this.tabs.length}`
+      this.status.textContent = this.error ? this.error : this.loading ? '正在读取标签页…' : `${this.tabs.length} 个标签页`
       this.results.textContent = ''
       this.empty.textContent = ''
       this.empty.hidden = true
 
-      if (loading) {
+      if (this.loading) {
         const loading = createElement('div', 'tab-search__loading')
-        loading.textContent = isHistory ? '正在读取浏览器历史记录…' : '正在读取当前窗口的标签页…'
+        loading.textContent = '正在读取当前窗口的标签页…'
         this.results.append(loading)
         this.input.removeAttribute('aria-activedescendant')
         return
       }
 
-      if (visibleItems.length === 0) {
+      if (this.visibleTabs.length === 0) {
         const heading = createElement('strong')
-        heading.textContent = this.error
-          ? isHistory ? '无法读取浏览器历史记录' : '无法读取标签页'
-          : isHistory
-            ? this.history.length === 0 ? '没有浏览器历史记录' : '没有找到匹配的历史记录'
-            : this.tabs.length === 0 ? '当前窗口没有标签页' : '没有找到匹配的标签页'
+        heading.textContent = this.error ? '无法读取标签页' : this.tabs.length === 0 ? '当前窗口没有标签页' : '没有找到匹配的标签页'
         const description = createElement('span')
-        description.textContent = this.error ?? (isHistory
-          ? this.history.length === 0 ? '请稍后重新尝试。' : '试试标题、网址或连续输入几个字符。'
-          : this.tabs.length === 0 ? '请打开一个网页后重新尝试。' : '试试标题、网址或连续输入几个字符.')
+        description.textContent = this.error ?? (this.tabs.length === 0 ? '请打开一个网页后重新尝试。' : '试试标题、网址或连续输入几个字符。')
         this.empty.append(heading, description)
         this.empty.hidden = false
         this.input.removeAttribute('aria-activedescendant')
         return
       }
 
-      if (isHistory) {
-        this.visibleHistory.forEach((item, resultIndex) => this.appendHistoryItem(item, resultIndex))
-        this.input.setAttribute('aria-activedescendant', `linkdeck-tab-search-history-option-${this.selectedIndex}`)
-        return
-      }
+      this.visibleTabs.forEach((tab, resultIndex) => {
+        const item = createElement('button', 'tab-search__item')
+        item.type = 'button'
+        item.id = `linkdeck-tab-search-option-${tab.id}`
+        item.setAttribute('role', 'option')
+        item.setAttribute('aria-selected', String(resultIndex === this.selectedIndex))
+        item.dataset.selected = String(resultIndex === this.selectedIndex)
+        item.addEventListener('click', () => void this.selectTab(tab))
 
-      this.visibleTabs.forEach((tab, resultIndex) => this.appendTabItem(tab, resultIndex))
+        const icon = this.createTabIcon(tab)
+        const copy = createElement('span', 'tab-search__copy')
+        const nameLine = createElement('span', 'tab-search__name-line')
+        const name = createElement('strong', 'tab-search__name')
+        name.textContent = tab.title
+        nameLine.append(name)
+        if (tab.active) {
+          const active = createElement('span', 'tab-search__active')
+          active.textContent = '当前'
+          nameLine.append(active)
+        }
+        if (tab.pinned) {
+          const pinned = createElement('span', 'tab-search__pinned')
+          pinned.textContent = '固定'
+          nameLine.append(pinned)
+        }
+        const url = createElement('small', 'tab-search__url')
+        url.textContent = tab.url || '网址不可用'
+        copy.append(nameLine, url)
+
+        const tabIndex = createElement('span', 'tab-search__index')
+        tabIndex.textContent = String(tab.index + 1)
+        tabIndex.setAttribute('aria-hidden', 'true')
+        item.append(icon, copy, tabIndex)
+        this.results.append(item)
+      })
+
       this.input.setAttribute('aria-activedescendant', `linkdeck-tab-search-option-${this.visibleTabs[this.selectedIndex].id}`)
-    }
-
-    private appendTabItem(tab: TabSearchTab, resultIndex: number): void {
-      const item = createElement('button', 'tab-search__item')
-      item.type = 'button'
-      item.id = `linkdeck-tab-search-option-${tab.id}`
-      item.setAttribute('role', 'option')
-      item.setAttribute('aria-selected', String(resultIndex === this.selectedIndex))
-      item.dataset.selected = String(resultIndex === this.selectedIndex)
-      item.addEventListener('click', () => void this.selectTab(tab))
-
-      const icon = this.createTabIcon(tab)
-      const copy = createElement('span', 'tab-search__copy')
-      const nameLine = createElement('span', 'tab-search__name-line')
-      const name = createElement('strong', 'tab-search__name')
-      name.textContent = tab.title
-      nameLine.append(name)
-      if (tab.active) {
-        const active = createElement('span', 'tab-search__active')
-        active.textContent = '当前'
-        nameLine.append(active)
-      }
-      if (tab.pinned) {
-        const pinned = createElement('span', 'tab-search__pinned')
-        pinned.textContent = '固定'
-        nameLine.append(pinned)
-      }
-      const url = createElement('small', 'tab-search__url')
-      url.textContent = tab.url || '网址不可用'
-      copy.append(nameLine, url)
-
-      const tabIndex = createElement('span', 'tab-search__index')
-      tabIndex.textContent = String(tab.index + 1)
-      tabIndex.setAttribute('aria-hidden', 'true')
-      item.append(icon, copy, tabIndex)
-      this.results.append(item)
-    }
-
-    /** 将单条历史记录渲染为可用键盘选择的列表项。 */
-    private appendHistoryItem(historyItem: TabSearchHistoryItem, resultIndex: number): void {
-      const item = createElement('button', 'tab-search__item')
-      item.type = 'button'
-      item.id = `linkdeck-tab-search-history-option-${resultIndex}`
-      item.setAttribute('role', 'option')
-      item.setAttribute('aria-selected', String(resultIndex === this.selectedIndex))
-      item.dataset.selected = String(resultIndex === this.selectedIndex)
-      item.addEventListener('click', () => void this.openHistory(historyItem))
-
-      const icon = createElement('span', 'tab-search__icon')
-      icon.textContent = '◌'
-      icon.setAttribute('aria-hidden', 'true')
-      const copy = createElement('span', 'tab-search__copy')
-      const nameLine = createElement('span', 'tab-search__name-line')
-      const name = createElement('strong', 'tab-search__name')
-      name.textContent = historyItem.title
-      nameLine.append(name)
-      const url = createElement('small', 'tab-search__url')
-      url.textContent = historyItem.url
-      const time = createElement('small', 'tab-search__time')
-      time.textContent = formatHistoryTime(historyItem.lastVisitTime)
-      copy.append(nameLine, url, time)
-
-      const historyIndex = createElement('span', 'tab-search__index')
-      historyIndex.textContent = String(resultIndex + 1)
-      historyIndex.setAttribute('aria-hidden', 'true')
-      item.append(icon, copy, historyIndex)
-      this.results.append(item)
     }
 
     private createTabIcon(tab: TabSearchTab): HTMLSpanElement {
@@ -956,21 +775,9 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
       }
     }
 
-    private async openHistory(historyItem: TabSearchHistoryItem): Promise<void> {
-      this.close()
-      try {
-        const message: TabSearchMessage = { type: OPEN_HISTORY_MESSAGE, url: historyItem.url }
-        const response = await chrome.runtime.sendMessage(message) as TabSearchResponse | undefined
-        if (response && !response.ok) console.warn('打开历史记录失败', response.error)
-      } catch (error: unknown) {
-        console.warn('打开历史记录失败', error)
-      }
-    }
-
     private close(): void {
       if (this.closed) return
       this.closed = true
-      this.historyRequestVersion += 1
       this.host.removeEventListener(REFRESH_EVENT, this.handleRefresh)
       this.host.remove()
     }
@@ -987,8 +794,7 @@ import type { TabSearchHistoryItem, TabSearchMessage, TabSearchResponse, TabSear
     if (!root) return
     const host = document.createElement('div')
     host.id = HOST_ID
-    // 使用 closed ShadowRoot，避免宿主网页脚本读取搜索结果中的浏览历史。
-    const shadow = host.attachShadow({ mode: 'closed' })
+    const shadow = host.attachShadow({ mode: 'open' })
     root.appendChild(host)
     new TabSearchOverlay(host, shadow).mount()
   }
