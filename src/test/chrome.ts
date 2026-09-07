@@ -24,6 +24,7 @@ export const tabsCreate = vi.fn()
 export const tabsQuery = vi.fn()
 export const tabsGet = vi.fn()
 export const tabsUpdate = vi.fn()
+export const historySearch = vi.fn()
 export const scriptingExecuteScript = vi.fn()
 export const actionSetBadgeText = vi.fn()
 export const actionSetBadgeBackgroundColor = vi.fn()
@@ -91,6 +92,7 @@ export function installChromeMock(initialSync: Store = {}) {
   tabsQuery.mockReset()
   tabsGet.mockReset()
   tabsUpdate.mockReset()
+  historySearch.mockReset()
   scriptingExecuteScript.mockReset()
   actionSetBadgeText.mockReset()
   actionSetBadgeBackgroundColor.mockReset()
@@ -102,6 +104,7 @@ export function installChromeMock(initialSync: Store = {}) {
   tabsQuery.mockImplementation(async () => [currentTab])
   tabsGet.mockImplementation(async (tabId: number) => ({ ...currentTab, id: tabId }))
   tabsUpdate.mockResolvedValue(undefined)
+  historySearch.mockResolvedValue([])
   scriptingExecuteScript.mockResolvedValue([])
   actionSetBadgeText.mockResolvedValue(undefined)
   actionSetBadgeBackgroundColor.mockResolvedValue(undefined)
@@ -143,6 +146,9 @@ export function installChromeMock(initialSync: Store = {}) {
         addListener: (listener: UpdatedListener) => tabsOnUpdatedListeners.add(listener),
         removeListener: (listener: UpdatedListener) => tabsOnUpdatedListeners.delete(listener),
       },
+    },
+    history: {
+      search: historySearch,
     },
     action: {
       setBadgeText: actionSetBadgeText,
