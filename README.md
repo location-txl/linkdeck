@@ -21,6 +21,8 @@ LinkDeck 是一个面向 Chrome 和 Edge 的 Manifest V3 网址收藏插件。
 
 运行 `pnpm package`。产物为 `release/linkdeck-v1.1.0.zip`，压缩包根目录直接包含 `manifest.json`。
 
+如需使用根目录的 `dist.pem` 生成 CRX3，运行 `pnpm package:crx`。产物为 `release/linkdeck-v1.1.0.crx`；`dist.pem` 仅用于签名，已被 `.gitignore` 忽略，不能提交到仓库。
+
 ## 数据和隐私
 
 - 收藏数据存放在 `chrome.storage.sync`；浏览器是否跨设备同步取决于账号和同步设置。
