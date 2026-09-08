@@ -6,7 +6,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/verify-tab-search-bundle.mjs",
     "build:dev": "tsc --noEmit && vite build --mode development",
     "test": "vitest run",
     "test:watch": "vitest",
