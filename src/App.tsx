@@ -11,6 +11,7 @@ import { getCurrentPageDraft, openBookmark, openManagerPage } from './lib/chrome
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { getHostname, UserFacingError } from './lib/bookmark-utils'
 import { getTagClickMode, getTagFilter, setTagClickMode, setTagFilter as saveTagFilter } from './lib/preferences'
+import { AutoCloseSettingsPanel } from './tab-auto-close/AutoCloseSettings'
 import type {
   Bookmark,
   BookmarkDraft,
@@ -411,6 +412,7 @@ function SettingsModal({ mode, onSelectMode, onClose }: { mode: TagClickMode; on
             <span><strong>直接多选</strong><small>点击即可选中或取消标签，可连续多选。</small></span>
           </label>
         </fieldset>
+        <AutoCloseSettingsPanel />
         <section className="settings__section settings__about" aria-labelledby="settings-about-title">
           <h3 id="settings-about-title">关于</h3>
           <div><strong>LinkDeck</strong><span>v{version}</span></div>

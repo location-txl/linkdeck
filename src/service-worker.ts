@@ -8,7 +8,8 @@ import { bookmarkRepository } from './lib/bookmark-repository'
 import { hasSameUrl } from './lib/bookmark-utils'
 import { isTabSearchMessage, TAB_SEARCH_COMMAND } from './tab-search/messages'
 import { handleTabSearchMessage } from './tab-search/service'
-import { MAX_BOOKMARK_TITLE_LENGTH } from './types'
+import { handleAutoCloseStorageChange, handleAutoCloseStartup, registerAutoCloseService } from './tab-auto-close/service'
+import { MAX_BOOKMARK_TITLE_LENGTH, STORAGE_KEYS } from './types'
 
 const LOCAL_CHANGE_DEBOUNCE_MS = 500
 const PENDING_WRITE_RETRY_MS = 3_000
@@ -75,6 +76,7 @@ async function refreshActiveTabBadges(): Promise<void> {
 }
 
 void chrome.action.setBadgeBackgroundColor({ color: SAVED_BADGE_COLOR })
+registerAutoCloseService()
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   void refreshTabBadge(tabId)
@@ -139,6 +141,7 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  handleAutoCloseStorageChange(changes[STORAGE_KEYS.autoCloseSettings], areaName)
   if (areaName === 'sync' && hasLinkDeckStorageChange(changes)) {
     scheduleSync()
     void refreshActiveTabBadges()
@@ -155,11 +158,13 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 })
 
 chrome.runtime.onStartup.addListener(() => {
+  handleAutoCloseStartup()
   void handleGistSyncMessage({ type: 'gist-sync:sync-now' })
   void refreshActiveTabBadges()
 })
 
 chrome.runtime.onInstalled.addListener(() => {
+  handleAutoCloseStartup()
   registerContextMenu()
   void handleGistSyncMessage({ type: 'gist-sync:sync-now' })
   void refreshActiveTabBadges()

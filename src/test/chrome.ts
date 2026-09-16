@@ -6,12 +6,18 @@ type StorageChange = { oldValue?: unknown; newValue?: unknown }
 type StorageListener = (changes: Record<string, StorageChange>, areaName: string) => void
 type ActivatedListener = (activeInfo: { tabId: number; windowId: number }) => void
 type UpdatedListener = (tabId: number, changeInfo: { url?: string }, tab: { active?: boolean; url?: string }) => void
-type MockTab = { id?: number; active?: boolean; windowId?: number; title?: string; url?: string }
+type MockTab = { id?: number; active?: boolean; pinned?: boolean; audible?: boolean; windowId?: number; title?: string; url?: string }
 type CommandListener = (command: string, tab?: MockTab) => void
+type CreatedListener = (tab: MockTab) => void
+type RemovedListener = (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void
+type AlarmListener = (alarm: { name: string; periodInMinutes?: number; scheduledTime: number }) => void
 
 const listeners = new Set<StorageListener>()
 let syncStore: Store = {}
 let localStore: Store = {}
+let sessionStore: Store = {}
+let queriedTabs: MockTab[] | undefined
+let alarmsStore: Record<string, { name: string; periodInMinutes?: number; scheduledTime: number }> = {}
 let currentTab: MockTab = {
   id: 1,
   active: true,
@@ -24,6 +30,7 @@ export const tabsCreate = vi.fn()
 export const tabsQuery = vi.fn()
 export const tabsGet = vi.fn()
 export const tabsUpdate = vi.fn()
+export const tabsRemove = vi.fn()
 export const historySearch = vi.fn()
 export const scriptingExecuteScript = vi.fn()
 export const actionSetBadgeText = vi.fn()
@@ -31,7 +38,13 @@ export const actionSetBadgeBackgroundColor = vi.fn()
 export const actionSetTitle = vi.fn()
 export const tabsOnActivatedListeners = new Set<ActivatedListener>()
 export const tabsOnUpdatedListeners = new Set<UpdatedListener>()
+export const tabsOnCreatedListeners = new Set<CreatedListener>()
+export const tabsOnRemovedListeners = new Set<RemovedListener>()
 export const commandsOnCommandListeners = new Set<CommandListener>()
+export const alarmsOnAlarmListeners = new Set<AlarmListener>()
+export const alarmsCreate = vi.fn()
+export const alarmsGet = vi.fn()
+export const alarmsClear = vi.fn()
 
 function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
@@ -88,10 +101,14 @@ export function installChromeMock(initialSync: Store = {}) {
   listeners.clear()
   syncStore = clone(initialSync)
   localStore = {}
+  sessionStore = {}
+  queriedTabs = undefined
+  alarmsStore = {}
   tabsCreate.mockReset()
   tabsQuery.mockReset()
   tabsGet.mockReset()
   tabsUpdate.mockReset()
+  tabsRemove.mockReset()
   historySearch.mockReset()
   scriptingExecuteScript.mockReset()
   actionSetBadgeText.mockReset()
@@ -99,16 +116,39 @@ export function installChromeMock(initialSync: Store = {}) {
   actionSetTitle.mockReset()
   tabsOnActivatedListeners.clear()
   tabsOnUpdatedListeners.clear()
+  tabsOnCreatedListeners.clear()
+  tabsOnRemovedListeners.clear()
   commandsOnCommandListeners.clear()
+  alarmsOnAlarmListeners.clear()
+  alarmsCreate.mockReset()
+  alarmsGet.mockReset()
+  alarmsClear.mockReset()
   tabsCreate.mockResolvedValue(undefined)
-  tabsQuery.mockImplementation(async () => [currentTab])
-  tabsGet.mockImplementation(async (tabId: number) => ({ ...currentTab, id: tabId }))
+  tabsQuery.mockImplementation(async () => (queriedTabs ?? [currentTab]).map((tab) => ({ ...tab })))
+  tabsGet.mockImplementation(async (tabId: number) => {
+    const tab = (queriedTabs ?? [currentTab]).find((candidate) => candidate.id === tabId) ?? currentTab
+    return { ...tab, id: tabId }
+  })
   tabsUpdate.mockResolvedValue(undefined)
+  tabsRemove.mockImplementation(async (tabId: number) => {
+    if (queriedTabs) queriedTabs = queriedTabs.filter((tab) => tab.id !== tabId)
+  })
   historySearch.mockResolvedValue([])
   scriptingExecuteScript.mockResolvedValue([])
   actionSetBadgeText.mockResolvedValue(undefined)
   actionSetBadgeBackgroundColor.mockResolvedValue(undefined)
   actionSetTitle.mockResolvedValue(undefined)
+  alarmsCreate.mockImplementation(async (nameOrInfo: string | undefined | { periodInMinutes?: number }, maybeInfo?: { periodInMinutes?: number }) => {
+    const name = typeof nameOrInfo === 'string' ? nameOrInfo : ''
+    const info = typeof nameOrInfo === 'string' ? maybeInfo : nameOrInfo
+    alarmsStore[name] = { name, periodInMinutes: info?.periodInMinutes, scheduledTime: Date.now() }
+  })
+  alarmsGet.mockImplementation(async (name: string) => alarmsStore[name])
+  alarmsClear.mockImplementation(async (name: string) => {
+    const existed = Boolean(alarmsStore[name])
+    delete alarmsStore[name]
+    return existed
+  })
 
   const sync = createArea(
     () => syncStore,
@@ -124,10 +164,18 @@ export function installChromeMock(initialSync: Store = {}) {
     },
     'local',
   )
+  const session = createArea(
+    () => sessionStore,
+    (next) => {
+      sessionStore = next
+    },
+    'session',
+  )
   const mockedChrome = {
     storage: {
       sync,
       local,
+      session,
       onChanged: {
         addListener: (listener: StorageListener) => listeners.add(listener),
         removeListener: (listener: StorageListener) => listeners.delete(listener),
@@ -146,6 +194,15 @@ export function installChromeMock(initialSync: Store = {}) {
         addListener: (listener: UpdatedListener) => tabsOnUpdatedListeners.add(listener),
         removeListener: (listener: UpdatedListener) => tabsOnUpdatedListeners.delete(listener),
       },
+      onCreated: {
+        addListener: (listener: CreatedListener) => tabsOnCreatedListeners.add(listener),
+        removeListener: (listener: CreatedListener) => tabsOnCreatedListeners.delete(listener),
+      },
+      onRemoved: {
+        addListener: (listener: RemovedListener) => tabsOnRemovedListeners.add(listener),
+        removeListener: (listener: RemovedListener) => tabsOnRemovedListeners.delete(listener),
+      },
+      remove: tabsRemove,
     },
     history: {
       search: historySearch,
@@ -154,6 +211,15 @@ export function installChromeMock(initialSync: Store = {}) {
       setBadgeText: actionSetBadgeText,
       setBadgeBackgroundColor: actionSetBadgeBackgroundColor,
       setTitle: actionSetTitle,
+    },
+    alarms: {
+      create: alarmsCreate,
+      get: alarmsGet,
+      clear: alarmsClear,
+      onAlarm: {
+        addListener: (listener: AlarmListener) => alarmsOnAlarmListeners.add(listener),
+        removeListener: (listener: AlarmListener) => alarmsOnAlarmListeners.delete(listener),
+      },
     },
     commands: {
       onCommand: {
@@ -184,6 +250,10 @@ export function installChromeMock(initialSync: Store = {}) {
 
 export function setCurrentTab(tab: MockTab) {
   currentTab = tab
+}
+
+export function setTabs(tabs: MockTab[]) {
+  queriedTabs = tabs.map((tab) => ({ ...tab }))
 }
 
 export function getSyncStore(): Store {

@@ -12,6 +12,8 @@ export const STORAGE_KEYS = {
   bookmarkPrefix: 'linkdeck:v2:bookmark:',
   tagFilter: 'linkdeck:selected-tag-filter',
   tagClickMode: 'linkdeck:tag-click-mode',
+  autoCloseSettings: 'linkdeck:auto-close:settings',
+  autoCloseSession: 'linkdeck:auto-close:session',
   migrationBackup: 'linkdeck:migration-backup:v1',
   legacyMeta: 'linkdeck:meta',
   legacyBookmarkPrefix: 'linkdeck:bookmark:',
@@ -78,6 +80,13 @@ export type TagFilter = {
 
 /** Popup 中标签筛选按钮的点击交互方式。 */
 export type TagClickMode = 'modifier-multi' | 'direct-multi'
+
+/** 当前浏览器的闲置标签页自动关闭配置，不参与收藏同步。 */
+export type AutoCloseSettings = {
+  enabled: boolean
+  idleMinutes: number
+  whitelistDomains: string[]
+}
 
 /** 仅用于读取并迁移旧版分组数据，不能写回 v2 存储。 */
 export type LegacyGroup = {

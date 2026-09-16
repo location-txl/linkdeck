@@ -6,6 +6,7 @@ import { serializeBackup } from './data-transfer/data-transfer'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import './styles.css'
 import { installChromeMock, tabsCreate } from './test/chrome'
+import { STORAGE_KEYS } from './types'
 
 describe('LinkDeck popup', () => {
   beforeEach(() => installChromeMock())
@@ -224,6 +225,75 @@ describe('LinkDeck popup', () => {
 
     await bookmarkRepository.deleteTag(work.id)
     expect(await screen.findByRole('heading', { name: '全部链接' })).toBeInTheDocument()
+  })
+
+  it('configures automatic tab closing and normalizes whitelist domains', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+    const duration = within(settings).getByRole('spinbutton', { name: '闲置时间（分钟）' })
+    expect(duration).toHaveValue(120)
+
+    await user.clear(duration)
+    await user.type(duration, '45')
+    await user.tab()
+    await user.type(within(settings).getByRole('textbox', { name: '添加白名单域名' }), 'HTTPS://Example.com/docs')
+    await user.click(within(settings).getByRole('button', { name: '添加' }))
+    expect(within(settings).getByText('example.com')).toBeInTheDocument()
+
+    await user.click(within(settings).getByRole('checkbox', { name: /启用自动关闭/ }))
+    expect(within(settings).getByRole('checkbox', { name: /启用自动关闭/ })).toBeChecked()
+    await user.click(within(settings).getByRole('button', { name: '移除白名单 example.com' }))
+    expect(within(settings).queryByText('example.com')).not.toBeInTheDocument()
+  })
+
+  it('keeps automatic close input visible when local storage rejects a save', async () => {
+    const chromeMock = installChromeMock()
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+    chromeMock.storage.local.set.mockRejectedValueOnce(new Error('storage unavailable'))
+
+    const domain = within(settings).getByRole('textbox', { name: '添加白名单域名' })
+    await user.type(domain, 'example.com')
+    await user.click(within(settings).getByRole('button', { name: '添加' }))
+
+    expect(domain).toHaveValue('example.com')
+    expect(await within(settings).findByRole('alert')).toHaveTextContent('storage unavailable')
+    expect(within(settings).queryByRole('button', { name: '移除白名单 example.com' })).not.toBeInTheDocument()
+
+    await user.click(within(settings).getByRole('button', { name: '添加' }))
+    expect(domain).toHaveValue('')
+    expect(within(settings).getByRole('button', { name: '移除白名单 example.com' })).toBeInTheDocument()
+    expect(chromeMock.storage.local.set).toHaveBeenLastCalledWith({
+      [STORAGE_KEYS.autoCloseSettings]: { enabled: false, idleMinutes: 120, whitelistDomains: ['example.com'] },
+    })
+  })
+
+  it('retries the same automatic close duration after a failed save', async () => {
+    const chromeMock = installChromeMock()
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+    const duration = within(settings).getByRole('spinbutton', { name: '闲置时间（分钟）' })
+    chromeMock.storage.local.set.mockRejectedValueOnce(new Error('storage unavailable'))
+    await user.clear(duration)
+    await user.type(duration, '45{Enter}')
+    expect(await within(settings).findByRole('alert')).toHaveTextContent('storage unavailable')
+    const attempts = chromeMock.storage.local.set.mock.calls.length
+
+    await user.keyboard('{Enter}')
+    expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(attempts + 1)
+    expect(chromeMock.storage.local.set).toHaveBeenLastCalledWith({
+      [STORAGE_KEYS.autoCloseSettings]: { enabled: false, idleMinutes: 45, whitelistDomains: [] },
+    })
   })
 
   it('pins and unpins tags from the manager without closing it', async () => {
