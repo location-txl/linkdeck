@@ -14,6 +14,7 @@ export const STORAGE_KEYS = {
   tagClickMode: 'linkdeck:tag-click-mode',
   autoCloseSettings: 'linkdeck:auto-close:settings',
   autoCloseSession: 'linkdeck:auto-close:session',
+  autoCloseHistory: 'linkdeck:auto-close:history',
   migrationBackup: 'linkdeck:migration-backup:v1',
   legacyMeta: 'linkdeck:meta',
   legacyBookmarkPrefix: 'linkdeck:bookmark:',
@@ -86,6 +87,13 @@ export type AutoCloseSettings = {
   enabled: boolean
   idleMinutes: number
   whitelistDomains: string[]
+}
+
+/** 一条由自动关闭功能关闭的页面记录，仅保存在本浏览器。 */
+export type AutoCloseHistoryEntry = {
+  url: string
+  title: string
+  closedAt: number
 }
 
 /** 仅用于读取并迁移旧版分组数据，不能写回 v2 存储。 */

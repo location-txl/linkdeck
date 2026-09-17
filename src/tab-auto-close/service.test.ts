@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { AUTO_CLOSE_ALARM_NAME, getAutoCloseSession, setAutoCloseSettings } from './preferences'
+import { AUTO_CLOSE_ALARM_NAME, getAutoCloseHistory, getAutoCloseSession, setAutoCloseSettings } from './preferences'
 import { checkAutoCloseTabs, ensureAutoCloseAlarm, handleAutoCloseStartup, handleAutoCloseStorageChange, registerAutoCloseService } from './service'
 import { alarmsCreate, alarmsGet, installChromeMock, setTabs, tabsRemove, tabsOnUpdatedListeners } from '../test/chrome'
 
@@ -103,6 +103,21 @@ describe('auto-close service', () => {
     expect((await getAutoCloseSession()).idleSince['2']).toBe(601_001)
     await checkAutoCloseTabs(661_001)
     expect(tabsRemove).toHaveBeenCalledWith(2)
+  })
+
+  it('records closed tabs in the close history and skips failed closes', async () => {
+    setTabs([{ id: 21, windowId: 1, active: false, url: 'https://docs.example.com/guide', title: '使用指南' }])
+    await setAutoCloseSettings({ enabled: true, idleMinutes: 1, whitelistDomains: [] })
+
+    await checkAutoCloseTabs(1_000)
+    tabsRemove.mockRejectedValueOnce(new Error('tab changed'))
+    await checkAutoCloseTabs(61_001)
+    await expect(getAutoCloseHistory()).resolves.toEqual([])
+
+    await checkAutoCloseTabs(121_001)
+    await expect(getAutoCloseHistory()).resolves.toEqual([
+      { url: 'https://docs.example.com/guide', title: '使用指南', closedAt: 121_001 },
+    ])
   })
 
   it('clears session timers on browser startup so resumed pages get a fresh baseline', async () => {

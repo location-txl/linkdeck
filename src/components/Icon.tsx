@@ -14,6 +14,7 @@ export type IconName =
   | 'expand'
   | 'folder'
   | 'globe'
+  | 'history'
   | 'layers'
   | 'link'
   | 'more'
@@ -127,6 +128,14 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
         <svg {...common}>
           <circle cx="12" cy="12" r="8.5" />
           <path d="M3.8 12h16.4M12 3.5c2.1 2.3 3.2 5.1 3.2 8.5S14.1 18.2 12 20.5C9.9 18.2 8.8 15.4 8.8 12S9.9 5.8 12 3.5Z" />
+        </svg>
+      )
+    case 'history':
+      return (
+        <svg {...common}>
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+          <path d="M3 3v5h5" />
+          <path d="M12 7v5l4 2" />
         </svg>
       )
     case 'layers':

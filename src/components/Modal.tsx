@@ -1,4 +1,4 @@
-import { useEffect, type ReactNode } from 'react'
+import { useEffect, useId, type ReactNode } from 'react'
 import { Icon } from './Icon'
 
 type ModalProps = {
@@ -9,6 +9,8 @@ type ModalProps = {
 }
 
 export function Modal({ title, children, onClose, size = 'default' }: ModalProps) {
+  const titleId = useId()
+
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') onClose()
@@ -29,10 +31,10 @@ export function Modal({ title, children, onClose, size = 'default' }: ModalProps
         className={`modal modal--${size}`}
         role="dialog"
         aria-modal="true"
-        aria-labelledby="modal-title"
+        aria-labelledby={titleId}
       >
         <header className="modal__header">
-          <h2 id="modal-title">{title}</h2>
+          <h2 id={titleId}>{title}</h2>
           <button className="icon-button" type="button" onClick={onClose} aria-label="关闭">
             <Icon name="close" />
           </button>

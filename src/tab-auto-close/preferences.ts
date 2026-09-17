@@ -1,5 +1,5 @@
 import { UserFacingError } from '../lib/bookmark-utils'
-import { STORAGE_KEYS, type AutoCloseSettings } from '../types'
+import { MAX_BOOKMARK_TITLE_LENGTH, MAX_URL_LENGTH, STORAGE_KEYS, type AutoCloseSettings, type AutoCloseHistoryEntry } from '../types'
 
 /** 自动关闭闲置标签页允许的最短和最长闲置时长。 */
 export const AUTO_CLOSE_MIN_IDLE_MINUTES = 1
@@ -18,6 +18,17 @@ export const AUTO_CLOSE_ALARM_NAME = 'linkdeck:auto-close:check'
 
 /** 闹钟两次触发之间的最大允许间隔，超过后重新开始计时。 */
 export const AUTO_CLOSE_MAX_CHECK_GAP_MS = 5 * 60 * 1000
+
+/** 关闭历史最多保留的条目数，超过后丢弃最旧记录。 */
+export const AUTO_CLOSE_HISTORY_LIMIT = 2_000
+
+const HTTP_URL_PATTERN = /^https?:\/\//i
+
+type StoredHistoryEntry = {
+  url?: unknown
+  title?: unknown
+  closedAt?: unknown
+}
 
 type StoredSessionState = {
   lastCheckAt?: unknown
@@ -188,4 +199,52 @@ export async function clearAutoCloseSession(): Promise<void> {
     return
   }
   window.sessionStorage.removeItem(STORAGE_KEYS.autoCloseSession)
+}
+
+function normalizeHistoryEntry(value: unknown): AutoCloseHistoryEntry | undefined {
+  if (!value || typeof value !== 'object') return undefined
+  const candidate = value as StoredHistoryEntry
+  if (typeof candidate.url !== 'string' || !HTTP_URL_PATTERN.test(candidate.url) || candidate.url.length > MAX_URL_LENGTH) return undefined
+  if (typeof candidate.closedAt !== 'number' || !Number.isFinite(candidate.closedAt) || candidate.closedAt <= 0) return undefined
+  const title = typeof candidate.title === 'string' ? candidate.title.trim().slice(0, MAX_BOOKMARK_TITLE_LENGTH) : ''
+  return { url: candidate.url, title, closedAt: candidate.closedAt }
+}
+
+/** 将存储中的任意值恢复为按新到旧排序的关闭历史，非法条目会被丢弃。 */
+export function normalizeAutoCloseHistory(value: unknown): AutoCloseHistoryEntry[] {
+  if (!Array.isArray(value)) return []
+  return value
+    .map(normalizeHistoryEntry)
+    .filter((entry): entry is AutoCloseHistoryEntry => Boolean(entry))
+    .slice(0, AUTO_CLOSE_HISTORY_LIMIT)
+}
+
+/** 读取本浏览器的自动关闭历史，浏览器重启后仍保留。 */
+export async function getAutoCloseHistory(): Promise<AutoCloseHistoryEntry[]> {
+  if (hasChromeStorage()) {
+    const values = await chrome.storage.local.get(STORAGE_KEYS.autoCloseHistory)
+    return normalizeAutoCloseHistory(values[STORAGE_KEYS.autoCloseHistory])
+  }
+  return normalizeAutoCloseHistory(parseStoredJson(window.localStorage.getItem(STORAGE_KEYS.autoCloseHistory)))
+}
+
+/** 记录一条自动关闭历史，新条目排在最前并裁剪到保留上限。 */
+export async function appendAutoCloseHistory(entry: AutoCloseHistoryEntry): Promise<void> {
+  const normalized = normalizeHistoryEntry(entry)
+  if (!normalized) return
+  const history = [normalized, ...(await getAutoCloseHistory())].slice(0, AUTO_CLOSE_HISTORY_LIMIT)
+  if (hasChromeStorage()) {
+    await chrome.storage.local.set({ [STORAGE_KEYS.autoCloseHistory]: history })
+    return
+  }
+  window.localStorage.setItem(STORAGE_KEYS.autoCloseHistory, JSON.stringify(history))
+}
+
+/** 清空全部自动关闭历史，仅供用户在界面上手动触发。 */
+export async function clearAutoCloseHistory(): Promise<void> {
+  if (hasChromeStorage()) {
+    await chrome.storage.local.remove(STORAGE_KEYS.autoCloseHistory)
+    return
+  }
+  window.localStorage.removeItem(STORAGE_KEYS.autoCloseHistory)
 }

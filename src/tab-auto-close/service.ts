@@ -1,6 +1,7 @@
 import {
   AUTO_CLOSE_ALARM_NAME,
   AUTO_CLOSE_MAX_CHECK_GAP_MS,
+  appendAutoCloseHistory,
   clearAutoCloseSession,
   getAutoCloseSession,
   getAutoCloseSettings,
@@ -114,11 +115,25 @@ async function closeIfStillIdle(tabId: number, now: number): Promise<'closed' | 
 
   try {
     await chrome.tabs.remove(tabId)
+    await recordClosedTab(tab, now)
     return 'closed'
   } catch (error: unknown) {
     // 标签页可能在复核期间已经被用户关闭；其余页面继续按本轮任务处理。
     console.warn(`关闭闲置标签页 ${tabId} 失败`, error)
     return 'kept'
+  }
+}
+
+/** 记录一条自动关闭历史；历史写入失败不影响关闭流程。 */
+async function recordClosedTab(tab: AutoCloseTab, closedAt: number): Promise<void> {
+  try {
+    await appendAutoCloseHistory({
+      url: tab.url ?? '',
+      title: tab.title ?? '',
+      closedAt,
+    })
+  } catch (error: unknown) {
+    console.warn('记录自动关闭历史失败', error)
   }
 }
 

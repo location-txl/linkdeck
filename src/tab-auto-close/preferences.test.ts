@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import {
   AUTO_CLOSE_DEFAULT_IDLE_MINUTES,
+  AUTO_CLOSE_HISTORY_LIMIT,
+  appendAutoCloseHistory,
+  clearAutoCloseHistory,
+  getAutoCloseHistory,
   getAutoCloseSession,
   getAutoCloseSettings,
   isWhitelistedHost,
@@ -8,7 +12,7 @@ import {
   setAutoCloseSession,
   setAutoCloseSettings,
 } from './preferences'
-import { STORAGE_KEYS } from '../types'
+import { STORAGE_KEYS, MAX_BOOKMARK_TITLE_LENGTH, MAX_URL_LENGTH } from '../types'
 import { getLocalStore, installChromeMock } from '../test/chrome'
 
 describe('auto-close preferences', () => {
@@ -51,5 +55,53 @@ describe('auto-close preferences', () => {
     await setAutoCloseSession({ lastCheckAt: 1_000, idleSince: { '7': 2_000 } })
     await expect(getAutoCloseSession()).resolves.toEqual({ lastCheckAt: 1_000, idleSince: { '7': 2_000 } })
     expect(getLocalStore()[STORAGE_KEYS.autoCloseSession]).toBeUndefined()
+  })
+
+  it('records auto-close history newest first and clears it on demand', async () => {
+    await appendAutoCloseHistory({ url: 'https://a.example.com', title: '页面 A', closedAt: 1_000 })
+    await appendAutoCloseHistory({ url: 'https://b.example.com', title: '  页面 B  ', closedAt: 2_000 })
+
+    await expect(getAutoCloseHistory()).resolves.toEqual([
+      { url: 'https://b.example.com', title: '页面 B', closedAt: 2_000 },
+      { url: 'https://a.example.com', title: '页面 A', closedAt: 1_000 },
+    ])
+
+    await clearAutoCloseHistory()
+    await expect(getAutoCloseHistory()).resolves.toEqual([])
+    expect(getLocalStore()[STORAGE_KEYS.autoCloseHistory]).toBeUndefined()
+  })
+
+  it('drops invalid stored history entries and trims titles to the bookmark limit', async () => {
+    const longTitle = '长'.repeat(MAX_BOOKMARK_TITLE_LENGTH + 10)
+    await chrome.storage.local.set({
+      [STORAGE_KEYS.autoCloseHistory]: [
+        { url: 'https://ok.example.com', title: `  ${longTitle}  `, closedAt: 5_000 },
+        { url: 'chrome://settings', title: '内置页', closedAt: 6_000 },
+        { url: 'https://missing.example.com', title: '缺时间' },
+        'not-an-entry',
+        { url: `https://long.example.com/${'x'.repeat(MAX_URL_LENGTH)}`, title: '超长网址', closedAt: 7_000 },
+      ],
+    })
+
+    await expect(getAutoCloseHistory()).resolves.toEqual([
+      { url: 'https://ok.example.com', title: '长'.repeat(MAX_BOOKMARK_TITLE_LENGTH), closedAt: 5_000 },
+    ])
+  })
+
+  it('keeps only the newest entries when history exceeds the retention limit', async () => {
+    const seeded = Array.from({ length: AUTO_CLOSE_HISTORY_LIMIT }, (_, index) => ({
+      url: `https://batch-${index}.example.com`,
+      title: `批量 ${index}`,
+      closedAt: index + 1,
+    }))
+    await chrome.storage.local.set({ [STORAGE_KEYS.autoCloseHistory]: [...seeded].reverse() })
+
+    await appendAutoCloseHistory({ url: 'https://newest.example.com', title: '最新', closedAt: AUTO_CLOSE_HISTORY_LIMIT + 1 })
+
+    const history = await getAutoCloseHistory()
+    expect(history).toHaveLength(AUTO_CLOSE_HISTORY_LIMIT)
+    expect(history[0]).toEqual({ url: 'https://newest.example.com', title: '最新', closedAt: AUTO_CLOSE_HISTORY_LIMIT + 1 })
+    expect(history[1]).toEqual(seeded[seeded.length - 1])
+    expect(history.some((entry) => entry.url === 'https://batch-0.example.com')).toBe(false)
   })
 })
