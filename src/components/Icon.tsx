@@ -19,6 +19,7 @@ export type IconName =
   | 'link'
   | 'more'
   | 'pin'
+  | 'refresh'
   | 'search'
   | 'settings'
   | 'trash'
@@ -166,6 +167,13 @@ export function Icon({ name, size = 18, ...props }: IconProps) {
         <svg {...common}>
           <path d="m8 4 8 8M14.7 4.7l4.6 4.6-3 3-.8 4.8-4.8-.8-3 3-4.6-4.6 3-3-.8-4.8 4.8.8 3-3Z" />
           <path d="m9.5 14.5-5 5" />
+        </svg>
+      )
+    case 'refresh':
+      return (
+        <svg {...common}>
+          <path d="M21 12a9 9 0 1 1-2.64-6.36L21 8" />
+          <path d="M21 3v5h-5" />
         </svg>
       )
     case 'search':

@@ -8,12 +8,11 @@ import { TagInput } from './components/TagInput'
 import { DataTransferModal } from './data-transfer/DataTransferModal'
 import { getGistSyncStatus, requestGistSync, subscribeGistSyncStatus } from './gist-sync/client'
 import type { GistSyncViewState } from './gist-sync/types'
-import { getCurrentPageDraft, openBookmark, openManagerPage } from './lib/chrome-api'
+import { getCurrentPageDraft, openBookmark, openCloseHistoryPage, openManagerPage } from './lib/chrome-api'
 import { bookmarkRepository } from './lib/bookmark-repository'
 import { getHostname, UserFacingError } from './lib/bookmark-utils'
 import { getTagClickMode, getTagFilter, setTagClickMode, setTagFilter as saveTagFilter } from './lib/preferences'
 import { AutoCloseSettingsPanel } from './tab-auto-close/AutoCloseSettings'
-import { CloseHistoryModal } from './tab-auto-close/CloseHistory'
 import type {
   Bookmark,
   BookmarkDraft,
@@ -61,7 +60,6 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
   const [tagForm, setTagForm] = useState<TagFormState>()
   const [tagManagerOpen, setTagManagerOpen] = useState(false)
   const [settingsOpen, setSettingsOpen] = useState(false)
-  const [closeHistoryOpen, setCloseHistoryOpen] = useState(false)
   const [dataManagerOpen, setDataManagerOpen] = useState(false)
   const [deleteTarget, setDeleteTarget] = useState<Bookmark>()
   const [deleteTagTarget, setDeleteTagTarget] = useState<Tag>()
@@ -291,7 +289,7 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
         <div className="topbar__actions">
           <span className="sync-state" title={gistSyncTitle(gistSyncState)}><Icon name="cloud" size={15} /><span>{gistSyncLabel(gistSyncState)}</span></span>
           {view === 'popup' && <button className="icon-button" type="button" onClick={() => void openManagerPage()} aria-label="全屏管理" title="在新标签页中管理"><Icon name="expand" /></button>}
-          <button className="icon-button" type="button" onClick={() => setCloseHistoryOpen(true)} aria-label="关闭历史" title="关闭历史"><Icon name="history" /></button>
+          <button className="icon-button" type="button" onClick={() => void openCloseHistoryPage()} aria-label="关闭历史" title="在新标签页查看关闭历史"><Icon name="history" /></button>
           <button className="icon-button" type="button" onClick={() => setSettingsOpen(true)} aria-label="设置" title="设置"><Icon name="settings" /></button>
           <button className="icon-button" type="button" onClick={() => setDataManagerOpen(true)} aria-label="数据管理" title="数据管理"><Icon name="more" /></button>
           <button className="icon-button" type="button" onClick={() => setTagManagerOpen(true)} aria-label="管理标签" title="管理标签"><Icon name="layers" /></button>
@@ -356,7 +354,6 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
 
       {bookmarkModal && <BookmarkFormModal key={bookmarkModal.mode === 'edit' ? bookmarkModal.bookmark.id : 'create'} mode={bookmarkModal.mode} initial={bookmarkModal.initial} tags={snapshot.meta.tags} onClose={() => setBookmarkModal(undefined)} onSave={saveBookmark} onRequestDelete={bookmarkModal.mode === 'edit' ? () => { setDeleteTarget(bookmarkModal.bookmark); setBookmarkModal(undefined) } : undefined} />}
       {settingsOpen && <SettingsModal mode={tagClickMode} onSelectMode={selectTagClickMode} onClose={() => setSettingsOpen(false)} />}
-      {closeHistoryOpen && <CloseHistoryModal onClose={() => setCloseHistoryOpen(false)} />}
       {dataManagerOpen && <DataTransferModal snapshot={snapshot} onClose={() => setDataManagerOpen(false)} onExported={(filename) => { setDataManagerOpen(false); setNotice(`已导出 ${filename}。`) }} onImport={importData} onGistSyncStateChange={setGistSyncState} />}
       {tagManagerOpen && <TagManagerModal tags={snapshot.meta.tags} bookmarks={snapshot.bookmarks} onClose={() => setTagManagerOpen(false)} onAdd={() => { setTagManagerOpen(false); setTagForm({ mode: 'create' }) }} onEdit={(tag) => { setTagManagerOpen(false); setTagForm({ mode: 'edit', tag }) }} onDelete={(tag) => { setTagManagerOpen(false); setDeleteTagTarget(tag) }} onTogglePin={(tag) => runMutation(() => bookmarkRepository.setTagPinned(tag.id, !tag.pinned), tag.pinned ? '已取消置顶标签。' : '标签已置顶。')} />}
       {tagForm && <TagFormModal key={tagForm.mode === 'edit' ? tagForm.tag.id : 'create'} mode={tagForm.mode} initialName={tagForm.mode === 'edit' ? tagForm.tag.name : ''} onClose={() => setTagForm(undefined)} onSave={saveTag} />}

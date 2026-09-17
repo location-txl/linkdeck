@@ -40,6 +40,18 @@ describe('LinkDeck popup', () => {
     })
   })
 
+  it('opens the close history page in a new browser tab', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    await user.click(screen.getByRole('button', { name: '关闭历史' }))
+
+    expect(tabsCreate).toHaveBeenCalledWith({
+      url: 'chrome-extension://linkdeck/index.html?view=close-history',
+    })
+  })
+
   it('does not show the full-screen trigger inside the manager page', async () => {
     render(<App view="manager" />)
     await screen.findByRole('heading', { name: '全部链接' })
