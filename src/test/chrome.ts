@@ -33,6 +33,17 @@ export const tabsUpdate = vi.fn()
 export const tabsRemove = vi.fn()
 export const historySearch = vi.fn()
 export const scriptingExecuteScript = vi.fn()
+export const scriptingGetRegisteredContentScripts = vi.fn()
+export const scriptingRegisterContentScripts = vi.fn()
+export const scriptingUnregisterContentScripts = vi.fn()
+export const permissionsContains = vi.fn()
+export const permissionsRequest = vi.fn()
+export const permissionsGetAll = vi.fn()
+export const permissionsRemove = vi.fn()
+export const permissionsOnAddedListeners = new Set<(permissions: { origins?: string[] }) => void>()
+export const permissionsOnRemovedListeners = new Set<(permissions: { origins?: string[] }) => void>()
+export const tabsSendMessage = vi.fn()
+export const runtimeSendMessage = vi.fn()
 export const actionSetBadgeText = vi.fn()
 export const actionSetBadgeBackgroundColor = vi.fn()
 export const actionSetTitle = vi.fn()
@@ -111,6 +122,17 @@ export function installChromeMock(initialSync: Store = {}) {
   tabsRemove.mockReset()
   historySearch.mockReset()
   scriptingExecuteScript.mockReset()
+  scriptingGetRegisteredContentScripts.mockReset()
+  scriptingRegisterContentScripts.mockReset()
+  scriptingUnregisterContentScripts.mockReset()
+  permissionsContains.mockReset()
+  permissionsRequest.mockReset()
+  permissionsGetAll.mockReset()
+  permissionsRemove.mockReset()
+  permissionsOnAddedListeners.clear()
+  permissionsOnRemovedListeners.clear()
+  tabsSendMessage.mockReset()
+  runtimeSendMessage.mockReset()
   actionSetBadgeText.mockReset()
   actionSetBadgeBackgroundColor.mockReset()
   actionSetTitle.mockReset()
@@ -135,6 +157,38 @@ export function installChromeMock(initialSync: Store = {}) {
   })
   historySearch.mockResolvedValue([])
   scriptingExecuteScript.mockResolvedValue([])
+  let registeredScripts: chrome.scripting.RegisteredContentScript[] = []
+  let grantedOrigins: string[] = []
+  scriptingGetRegisteredContentScripts.mockImplementation(async () => clone(registeredScripts))
+  scriptingRegisterContentScripts.mockImplementation(async (scripts: chrome.scripting.RegisteredContentScript[]) => {
+    registeredScripts.push(...clone(scripts))
+  })
+  scriptingUnregisterContentScripts.mockImplementation(async ({ ids }: { ids: string[] }) => {
+    registeredScripts = registeredScripts.filter((script) => !ids.includes(script.id))
+  })
+  permissionsContains.mockImplementation(async ({ origins }: { origins: string[] }) => origins.every((requested) =>
+    grantedOrigins.some((granted) => {
+      const [scheme, host] = requested.split('://')
+      const [grantedScheme, grantedHost] = granted.split('://')
+      const target = host.split('/')[0]
+      const allowed = grantedHost.split('/')[0]
+      return (grantedScheme === scheme || grantedScheme === '*') &&
+        (allowed === '*' || allowed === target || (allowed.startsWith('*.') &&
+          (target.replace(/^\*\./, '') === allowed.slice(2) || target.endsWith(`.${allowed.slice(2)}`))))
+    })))
+  permissionsGetAll.mockImplementation(async () => ({ origins: [...grantedOrigins] }))
+  permissionsRequest.mockImplementation(async ({ origins }: { origins: string[] }) => {
+    grantedOrigins = [...new Set([...grantedOrigins, ...origins])]
+    permissionsOnAddedListeners.forEach((listener) => listener({ origins }))
+    return true
+  })
+  permissionsRemove.mockImplementation(async ({ origins }: { origins: string[] }) => {
+    grantedOrigins = grantedOrigins.filter((origin) => !origins.includes(origin))
+    permissionsOnRemovedListeners.forEach((listener) => listener({ origins }))
+    return true
+  })
+  tabsSendMessage.mockResolvedValue(undefined)
+  runtimeSendMessage.mockResolvedValue({ ok: true, rule: null })
   actionSetBadgeText.mockResolvedValue(undefined)
   actionSetBadgeBackgroundColor.mockResolvedValue(undefined)
   actionSetTitle.mockResolvedValue(undefined)
@@ -203,6 +257,7 @@ export function installChromeMock(initialSync: Store = {}) {
         removeListener: (listener: RemovedListener) => tabsOnRemovedListeners.delete(listener),
       },
       remove: tabsRemove,
+      sendMessage: tabsSendMessage,
     },
     history: {
       search: historySearch,
@@ -229,8 +284,26 @@ export function installChromeMock(initialSync: Store = {}) {
     },
     scripting: {
       executeScript: scriptingExecuteScript,
+      getRegisteredContentScripts: scriptingGetRegisteredContentScripts,
+      registerContentScripts: scriptingRegisterContentScripts,
+      unregisterContentScripts: scriptingUnregisterContentScripts,
+    },
+    permissions: {
+      contains: permissionsContains,
+      request: permissionsRequest,
+      getAll: permissionsGetAll,
+      remove: permissionsRemove,
+      onAdded: {
+        addListener: (listener: (permissions: { origins?: string[] }) => void) => permissionsOnAddedListeners.add(listener),
+        removeListener: (listener: (permissions: { origins?: string[] }) => void) => permissionsOnAddedListeners.delete(listener),
+      },
+      onRemoved: {
+        addListener: (listener: (permissions: { origins?: string[] }) => void) => permissionsOnRemovedListeners.add(listener),
+        removeListener: (listener: (permissions: { origins?: string[] }) => void) => permissionsOnRemovedListeners.delete(listener),
+      },
     },
     runtime: {
+      sendMessage: runtimeSendMessage,
       getManifest: () => ({ version: '1.0.1' }),
       getURL: (path: string) => `chrome-extension://linkdeck/${path}`,
       onMessage: { addListener: vi.fn(), removeListener: vi.fn() },

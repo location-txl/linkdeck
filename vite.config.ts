@@ -1,4 +1,4 @@
-import { defineConfig, type Plugin } from 'vite'
+import { build, defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import manifest from './public/manifest.json' with { type: 'json' }
 
@@ -40,8 +40,29 @@ function extensionManifest(): Plugin {
   }
 }
 
+/** 独立构建两个注入入口，避免共享模块生成页面不能加载的 ESM import。 */
+function navigationScripts(): Plugin {
+  return {
+    name: 'linkdeck-navigation-scripts',
+    apply: 'build',
+    async closeBundle() {
+      for (const [name, entry] of [['same-tab-main', 'src/same-tab-navigation/main.ts'], ['same-tab-content', 'src/same-tab-navigation/content.ts']]) {
+        await build({
+          configFile: false,
+          build: {
+            outDir: 'dist',
+            emptyOutDir: false,
+            copyPublicDir: false,
+            lib: { entry, name: 'LinkDeckNavigation', formats: ['iife'], fileName: () => `assets/${name}.js` },
+          },
+        })
+      }
+    },
+  }
+}
+
 export default defineConfig({
-  plugins: [react(), extensionManifest()],
+  plugins: [react(), extensionManifest(), navigationScripts()],
   build: {
     outDir: 'dist',
     emptyOutDir: true,

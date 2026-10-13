@@ -15,6 +15,7 @@ export const STORAGE_KEYS = {
   autoCloseSettings: 'linkdeck:auto-close:settings',
   autoCloseSession: 'linkdeck:auto-close:session',
   autoCloseHistory: 'linkdeck:auto-close:history',
+  sameTabSettings: 'linkdeck:same-tab:settings',
   migrationBackup: 'linkdeck:migration-backup:v1',
   legacyMeta: 'linkdeck:meta',
   legacyBookmarkPrefix: 'linkdeck:bookmark:',
@@ -87,6 +88,18 @@ export type AutoCloseSettings = {
   enabled: boolean
   idleMinutes: number
   whitelistDomains: string[]
+}
+
+/** 指定网站内的普通导航范围，配置仅保存在当前浏览器。 */
+export type SameTabRule = {
+  domain: string
+  scope: 'site' | 'all'
+}
+
+/** 按来源网站启用当前标签页导航，不参与收藏数据同步。 */
+export type SameTabSettings = {
+  enabled: boolean
+  sites: SameTabRule[]
 }
 
 /** 一条由自动关闭功能关闭的页面记录，仅保存在本浏览器。 */

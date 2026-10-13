@@ -23,6 +23,7 @@
   },
   "permissions": ["storage", "tabs", "history", "contextMenus", "activeTab", "scripting", "alarms"],
   "host_permissions": ["https://api.github.com/*"],
+  "optional_host_permissions": ["http://*/*", "https://*/*"],
   "commands": {
     "open-tab-search": {
       "suggested_key": {

@@ -10,6 +10,7 @@ import { isTabSearchMessage, TAB_SEARCH_COMMAND } from './tab-search/messages'
 import { handleTabSearchMessage } from './tab-search/service'
 import { handleAutoCloseStorageChange, handleAutoCloseStartup, registerAutoCloseService } from './tab-auto-close/service'
 import { MAX_BOOKMARK_TITLE_LENGTH, STORAGE_KEYS } from './types'
+import { handleSameTabMessage, isSameTabMessage, registerSameTabNavigationService, syncSameTabNavigation } from './same-tab-navigation/service'
 
 const LOCAL_CHANGE_DEBOUNCE_MS = 500
 const PENDING_WRITE_RETRY_MS = 3_000
@@ -77,6 +78,7 @@ async function refreshActiveTabBadges(): Promise<void> {
 
 void chrome.action.setBadgeBackgroundColor({ color: SAVED_BADGE_COLOR })
 registerAutoCloseService()
+registerSameTabNavigationService()
 
 chrome.tabs.onActivated.addListener(({ tabId }) => {
   void refreshTabBadge(tabId)
@@ -129,6 +131,10 @@ async function saveCurrentPage(pageUrl: string, title?: string): Promise<void> {
 }
 
 chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
+  if (isSameTabMessage(message)) {
+    void handleSameTabMessage(message, _sender).then(sendResponse)
+    return true
+  }
   if (isGistSyncMessage(message)) {
     void handleGistSyncMessage(message).then(sendResponse)
     return true
@@ -141,6 +147,9 @@ chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) =
 })
 
 chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === 'local' && changes[STORAGE_KEYS.sameTabSettings]) {
+    void syncSameTabNavigation().catch((error: unknown) => console.warn('更新当前标签页导航失败', error))
+  }
   handleAutoCloseStorageChange(changes[STORAGE_KEYS.autoCloseSettings], areaName)
   if (areaName === 'sync' && hasLinkDeckStorageChange(changes)) {
     scheduleSync()
@@ -158,12 +167,14 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 })
 
 chrome.runtime.onStartup.addListener(() => {
+  void syncSameTabNavigation().catch((error: unknown) => console.warn('恢复当前标签页导航失败', error))
   handleAutoCloseStartup()
   void handleGistSyncMessage({ type: 'gist-sync:sync-now' })
   void refreshActiveTabBadges()
 })
 
 chrome.runtime.onInstalled.addListener(() => {
+  void syncSameTabNavigation().catch((error: unknown) => console.warn('恢复当前标签页导航失败', error))
   handleAutoCloseStartup()
   registerContextMenu()
   void handleGistSyncMessage({ type: 'gist-sync:sync-now' })
