@@ -169,6 +169,7 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
     [snapshot],
   )
   const searchTerm = useMemo(() => searchQuery.trim().toLocaleLowerCase(), [searchQuery])
+  const tagSearchTerm = searchTerm.startsWith('#') ? searchTerm.slice(1).trim() : undefined
   const isSearching = searchTerm.length > 0
   const filteredBookmarks = useMemo(() => {
     if (!snapshot) return []
@@ -179,10 +180,16 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
   }, [snapshot, tagFilter])
   const visibleBookmarks = useMemo(
     () => filteredBookmarks
-      .filter((bookmark) => !isSearching ||
-        bookmark.title.toLocaleLowerCase().includes(searchTerm) || bookmark.url.toLocaleLowerCase().includes(searchTerm))
+      .filter((bookmark) => {
+        if (!isSearching) return true
+        if (tagSearchTerm !== undefined) {
+          if (!tagSearchTerm) return false
+          return bookmark.tagIds.some((tagId) => tagNames.get(tagId)?.toLocaleLowerCase().includes(tagSearchTerm))
+        }
+        return bookmark.title.toLocaleLowerCase().includes(searchTerm) || bookmark.url.toLocaleLowerCase().includes(searchTerm)
+      })
       .sort((left, right) => right.createdAt - left.createdAt || left.id.localeCompare(right.id)),
-    [filteredBookmarks, isSearching, searchTerm],
+    [filteredBookmarks, isSearching, searchTerm, tagNames, tagSearchTerm],
   )
 
   const selectedFilterTags = useMemo(
@@ -323,7 +330,7 @@ export default function App({ view = 'popup' }: { view?: 'popup' | 'manager' }) 
 
       <div className="search-field" role="search">
         <Icon className="search-field__icon" name="search" size={16} />
-        <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索名称或网址" aria-label="搜索收藏" aria-keyshortcuts="Meta+F Control+F" title="按 ⌘F 搜索" />
+        <input ref={searchInputRef} type="search" value={searchQuery} onChange={(event) => setSearchQuery(event.target.value)} placeholder="搜索名称、网址或 #标签" aria-label="搜索收藏" aria-keyshortcuts="Meta+F Control+F" title="按 ⌘F 搜索" />
         {searchQuery && <button className="search-field__clear" type="button" onClick={() => setSearchQuery('')} aria-label="清除搜索" title="清除搜索"><Icon name="close" size={14} /></button>}
       </div>
 

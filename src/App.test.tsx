@@ -117,6 +117,50 @@ describe('LinkDeck popup', () => {
     expect(screen.queryByText('文档')).not.toBeInTheDocument()
   })
 
+  it('searches bookmarks by tag name with a hash prefix', async () => {
+    const work = await bookmarkRepository.createTag('工作')
+    const development = await bookmarkRepository.createTag('Development')
+    const personal = await bookmarkRepository.createTag('个人')
+    await bookmarkRepository.createBookmark({ title: '双标签收藏', url: 'https://combined.example.com', tagIds: [work.id, development.id], newTagNames: [] })
+    await bookmarkRepository.createBookmark({ title: '工作收藏', url: 'https://work.example.com', tagIds: [work.id], newTagNames: [] })
+    await bookmarkRepository.createBookmark({ title: '英文标签收藏', url: 'https://dev.example.com', tagIds: [development.id], newTagNames: [] })
+    await bookmarkRepository.createBookmark({ title: '个人收藏', url: 'https://personal.example.com', tagIds: [personal.id], newTagNames: [] })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByText('双标签收藏')
+
+    const search = screen.getByRole('searchbox', { name: '搜索收藏' })
+    expect(search).toHaveAttribute('placeholder', '搜索名称、网址或 #标签')
+
+    await user.type(search, '#工')
+    expect(await screen.findByRole('heading', { name: '2 条结果' })).toBeInTheDocument()
+    expect(screen.getByText('双标签收藏')).toBeInTheDocument()
+    expect(screen.getByText('工作收藏')).toBeInTheDocument()
+    expect(screen.queryByText('英文标签收藏')).not.toBeInTheDocument()
+
+    await user.clear(search)
+    await user.type(search, '#development')
+    expect(await screen.findByRole('heading', { name: '2 条结果' })).toBeInTheDocument()
+    expect(screen.getAllByRole('article')).toHaveLength(2)
+    expect(screen.getByText('双标签收藏')).toBeInTheDocument()
+    expect(screen.getByText('英文标签收藏')).toBeInTheDocument()
+
+    await user.clear(search)
+    await user.type(search, '#不存在')
+    expect(await screen.findByRole('heading', { name: '0 条结果' })).toBeInTheDocument()
+
+    await user.clear(search)
+    await user.type(search, '#')
+    expect(await screen.findByRole('heading', { name: '0 条结果' })).toBeInTheDocument()
+
+    await user.clear(search)
+    await user.click(within(screen.getByRole('navigation', { name: '标签筛选' })).getByRole('button', { name: /工作/ }))
+    await user.type(search, '#Development')
+    expect(await screen.findByRole('heading', { name: '1 条结果' })).toBeInTheDocument()
+    expect(screen.getByText('双标签收藏')).toBeInTheDocument()
+    expect(screen.queryByText('英文标签收藏')).not.toBeInTheDocument()
+  })
+
   it('defaults to switching tags and uses Command or Ctrl clicks for multi-select', async () => {
     const work = await bookmarkRepository.createTag('工作')
     const dev = await bookmarkRepository.createTag('开发')
