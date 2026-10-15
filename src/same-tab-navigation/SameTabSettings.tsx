@@ -101,9 +101,28 @@ export function SameTabSettingsPanel() {
   const removeDomain = async (domain: string) => {
     const sites = settings.sites.filter((site) => site.domain !== domain)
     if (!await save({ ...settings, sites })) return
-    // 有重叠规则时保留共享授权，避免删除父域名后连带停用子域名规则。
-    if (!sites.some((site) => matchesSite(site.domain, domain) || matchesSite(domain, site.domain))) {
-      await chrome.permissions.remove({ origins: siteOrigins(domain) }).catch(() => undefined)
+    setSaving(true)
+    try {
+      const { origins = [] } = await chrome.permissions.getAll()
+      const required: string[] = chrome.runtime.getManifest().host_permissions ?? []
+      const overlaps = (left: string, right: string) => matchesSite(left, right) || matchesSite(right, left)
+      // 同时清理此前因重叠规则保留的父域/子域授权，保留仍在使用及非本次相关的权限。
+      const unused = origins.filter((origin) => {
+        const grantedDomain = normalizeSiteDomain(origin.replace('://*.', '://'))
+        if (!grantedDomain || !overlaps(grantedDomain, domain) || sites.some((site) => overlaps(site.domain, grantedDomain))) return false
+        // Chrome 撤销父域模式会连带移除其覆盖的必需权限，保留这种共享授权。
+        return !required.some((requiredOrigin) => {
+          const scheme = requiredOrigin.split('://')[0]
+          if (scheme !== '*' && scheme !== origin.split('://')[0]) return false
+          const requiredDomain = normalizeSiteDomain(requiredOrigin.replace('://*.', '://'))
+          return requiredDomain && overlaps(grantedDomain, requiredDomain)
+        })
+      })
+      if (unused.length) await chrome.permissions.remove({ origins: unused })
+    } catch (caught) {
+      setError(errorMessage(caught))
+    } finally {
+      setSaving(false)
     }
   }
 
@@ -146,7 +165,7 @@ export function SameTabSettingsPanel() {
       </ul>}
       {error && <p className="form__error" role="alert">{error}</p>}
       <p className="same-tab-settings__note">域名包含子域名，重叠时使用更具体的规则。⌘/Ctrl 点击、Shift 点击和中键保留原行为。配置仅保存在当前浏览器。</p>
-      <p className="same-tab-settings__note">下载和显式弹窗不受影响。已打开的网页若仍新开标签页，请刷新后再试。</p>
+      <p className="same-tab-settings__note">下载和显式弹窗不受影响。已打开的网页若仍新开标签页，请刷新后再试。与 Gist 同步权限重叠的网站授权会保留，移除规则后仍停止导航改写。</p>
       {!available && <p className="same-tab-settings__note">请在浏览器扩展中配置网站权限。</p>}
     </section>
   )

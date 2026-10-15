@@ -5,6 +5,7 @@ import { getLocalStore, getSyncStore, installChromeMock, permissionsGetAll, perm
 import { STORAGE_KEYS } from '../types'
 import { SameTabSettingsPanel } from './SameTabSettings'
 import { setSameTabSettings } from './preferences'
+import { siteOrigins } from './rules'
 
 describe('当前标签页打开设置', () => {
   beforeEach(() => { installChromeMock(); setCurrentTab({ id: 1, url: 'https://scys.com/article/1' }) })
@@ -76,5 +77,44 @@ describe('当前标签页打开设置', () => {
     runtimeSendMessage.mockResolvedValueOnce({ ok: false, error: 'cannot register' })
     await expect(setSameTabSettings({ enabled: true, sites: [{ domain: 'scys.com', scope: 'all' }] })).rejects.toThrow('cannot register')
     expect(getLocalStore()[STORAGE_KEYS.sameTabSettings]).toEqual({ enabled: false, sites: [] })
+  })
+
+  it.each([
+    ['example.com', 'docs.example.com'],
+    ['docs.example.com', 'example.com'],
+  ])('releases overlapping permissions after removing %s then %s', async (first, second) => {
+    const user = userEvent.setup()
+    await chrome.permissions.request({ origins: [...siteOrigins('example.com'), ...siteOrigins('docs.example.com')] })
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: {
+      enabled: true,
+      sites: [{ domain: 'example.com', scope: 'all' }, { domain: 'docs.example.com', scope: 'all' }],
+    } })
+    render(<SameTabSettingsPanel />)
+    const firstRemove = await screen.findByRole('button', { name: `移除网站 ${first}` })
+    await waitFor(() => expect(firstRemove).toBeEnabled())
+    await user.click(firstRemove)
+    await waitFor(() => expect(screen.queryByRole('button', { name: `移除网站 ${first}` })).not.toBeInTheDocument())
+    expect(await chrome.permissions.contains({ origins: siteOrigins(second) })).toBe(true)
+    const secondRemove = screen.getByRole('button', { name: `移除网站 ${second}` })
+    await waitFor(() => expect(secondRemove).toBeEnabled())
+    await user.click(secondRemove)
+    await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: [] }))
+    expect(getLocalStore()[STORAGE_KEYS.sameTabSettings]).toEqual({ enabled: true, sites: [] })
+  })
+
+  it('keeps required and unrelated website permissions when removing a rule', async () => {
+    const user = userEvent.setup()
+    const requiredOrigin = 'https://api.github.com/*'
+    vi.spyOn(chrome.runtime, 'getManifest').mockReturnValue({ manifest_version: 3, name: 'LinkDeck', version: '1.1.0', host_permissions: [requiredOrigin] })
+    await chrome.permissions.request({ origins: [requiredOrigin, ...siteOrigins('github.com'), ...siteOrigins('unrelated.example')] })
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: {
+      enabled: true,
+      sites: [{ domain: 'github.com', scope: 'all' }],
+    } })
+    render(<SameTabSettingsPanel />)
+    const remove = await screen.findByRole('button', { name: '移除网站 github.com' })
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: [requiredOrigin, 'https://*.github.com/*', ...siteOrigins('unrelated.example')] }))
   })
 })

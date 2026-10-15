@@ -21,6 +21,7 @@ export type ScrollRestoration = {
 export function createScrollRestoration(win: Window): ScrollRestoration {
   let enabled = false
   let handledKey: string | undefined
+  let restoring = false
   let stopPending = () => undefined as void
   const entryKey = () => (win as EntryWindow).navigation?.currentEntry?.key
   const isReturn = () => (win.performance.getEntriesByType?.('navigation')?.[0] as PerformanceNavigationTiming | undefined)?.type === 'back_forward'
@@ -44,6 +45,7 @@ export function createScrollRestoration(win: Window): ScrollRestoration {
     const saved = read().find((snapshot) => snapshot.key === key)
     if (!saved) return
     stopPending()
+    restoring = true
     let frame: number | undefined
     let timeout: number
     let resize: ResizeObserver | undefined
@@ -53,6 +55,7 @@ export function createScrollRestoration(win: Window): ScrollRestoration {
       stopPending()
     }
     const stop = () => {
+      restoring = false
       mutations.disconnect()
       resize?.disconnect()
       if (frame !== undefined) win.cancelAnimationFrame(frame)
@@ -87,8 +90,24 @@ export function createScrollRestoration(win: Window): ScrollRestoration {
     schedule()
   }
 
+  const save = () => {
+    const key = entryKey()
+    if (!enabled || !key) return
+    stopPending()
+    handledKey = undefined
+    const snapshot = { key, x: Math.max(0, win.scrollX), y: Math.max(0, win.scrollY) }
+    try {
+      win.sessionStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify([snapshot, ...read().filter((item) => item.key !== key)].slice(0, MAX_SNAPSHOTS)))
+    } catch {
+      // 配额不足或存储被禁用不阻断链接打开。
+    }
+  }
+
   const onPageShow = (event: PageTransitionEvent) => { if (event.persisted || isReturn()) restore() }
   const onPageHide = () => {
+    // 等待恢复时保留原快照；其他离开更新已有坐标，避免原生导航返回后套用旧位置。
+    const key = entryKey()
+    if (!restoring && key && read().some((snapshot) => snapshot.key === key)) save()
     stopPending()
     handledKey = undefined
   }
@@ -97,18 +116,7 @@ export function createScrollRestoration(win: Window): ScrollRestoration {
   win.addEventListener('popstate', restore)
 
   return {
-    save() {
-      const key = entryKey()
-      if (!enabled || !key) return
-      stopPending()
-      handledKey = undefined
-      const snapshot = { key, x: Math.max(0, win.scrollX), y: Math.max(0, win.scrollY) }
-      try {
-        win.sessionStorage.setItem(SCROLL_STORAGE_KEY, JSON.stringify([snapshot, ...read().filter((item) => item.key !== key)].slice(0, MAX_SNAPSHOTS)))
-      } catch {
-        // 配额不足或存储被禁用不阻断链接打开。
-      }
-    },
+    save,
     setEnabled(value) {
       enabled = value
       if (!enabled) stopPending()

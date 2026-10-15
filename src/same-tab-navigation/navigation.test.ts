@@ -93,6 +93,25 @@ describe('页面内导航处理', () => {
     expect(nativeOpen).toHaveBeenLastCalledWith('https://scys.com/', '_blank', undefined)
   })
 
+  it('checks relative scripted opens against the document base URL', () => {
+    const base = document.createElement('base')
+    base.href = 'https://external.example/'
+    document.body.append(base)
+    navigation.update({ domain: window.location.hostname, scope: 'site' })
+    navigation.handleClick(clickEvent())
+    window.open('/article/1', '_blank')
+    expect(nativeOpen).toHaveBeenLastCalledWith('/article/1', '_blank', undefined)
+
+    base.href = `${window.location.origin}/articles/`
+    window.open('2', '_blank')
+    expect(nativeOpen).toHaveBeenLastCalledWith('2', '_self', undefined)
+
+    base.href = 'https://external.example/'
+    navigation.update({ domain: window.location.hostname, scope: 'all' })
+    window.open('/article/3', '_blank')
+    expect(nativeOpen).toHaveBeenLastCalledWith('/article/3', '_self', undefined)
+  })
+
   it('does not wrap window.open twice when the main script is reinjected', async () => {
     navigation.dispose()
     vi.resetModules()
@@ -111,14 +130,14 @@ describe('页面内导航处理', () => {
   })
 
   it('replaces a controller from an older injected version when the extension reloads', async () => {
-    Object.defineProperty(navigation, 'version', { value: 1 })
+    Object.defineProperty(navigation, 'version', { value: 2 })
     const oldDispose = vi.spyOn(navigation, 'dispose')
     const host = window as Window & { __linkdeckSameTabNavigation?: SameTabNavigation }
     host.__linkdeckSameTabNavigation = navigation
     vi.resetModules()
     await import('./main')
     expect(oldDispose).toHaveBeenCalledTimes(1)
-    expect(host.__linkdeckSameTabNavigation?.version).toBe(2)
+    expect(host.__linkdeckSameTabNavigation?.version).toBe(3)
     host.__linkdeckSameTabNavigation!.dispose()
     delete host.__linkdeckSameTabNavigation
   })

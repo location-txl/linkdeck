@@ -4,7 +4,7 @@ import { createScrollRestoration } from './scroll-restoration'
 
 /** 页面脚本的导航控制器，便于独立验证点击逻辑和清理行为。 */
 export type SameTabNavigation = {
-  version: 2
+  version: 3
   update: (rule: SameTabRule | null) => void
   handleClick: (event: MouseEvent) => void
   handleInput: (event: MouseEvent | KeyboardEvent) => void
@@ -52,7 +52,7 @@ export function createSameTabNavigation(win: Window): SameTabNavigation {
     // 空白页、显式弹窗和非用户操作不改写；异步调用仍须处于浏览器的有效用户操作期间。
     const plainFeatures = !features || features.split(',').every((feature) => /^(?:noopener|noreferrer)(?:\s*=\s*[01])?$/i.test(feature.trim()))
     const activeGesture = gesture?.ordinary && (win.navigator.userActivation?.isActive ?? Date.now() - gesture.time < 1_000)
-    if (href && activeGesture && plainFeatures && newContext(target) && allowsNavigation(rule, href, win.location.href)) {
+    if (href && activeGesture && plainFeatures && newContext(target) && allowsNavigation(rule, href, doc.baseURI)) {
       scrollRestoration.save()
       return originalOpen.call(win, url, '_self', features)
     }
@@ -82,7 +82,7 @@ export function createSameTabNavigation(win: Window): SameTabNavigation {
   win.addEventListener('keydown', handleInput as EventListener, true)
 
   return {
-    version: 2,
+    version: 3,
     update(next) {
       rule = next && matchesSite(win.location.hostname, next.domain) ? next : null
       scrollRestoration.setEnabled(Boolean(rule))

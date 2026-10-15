@@ -5,8 +5,8 @@ import { SAME_TAB_GET_RULE, SAME_TAB_REFRESH, SAME_TAB_UPDATE, type SameTabRespo
 
 // Chrome 会保留已注册脚本的源码缓存；升级脚本时更换 ID 并移除旧注册。
 const SCRIPT_ID_PREFIX = 'linkdeck-same-tab-'
-const MAIN_SCRIPT_ID = `${SCRIPT_ID_PREFIX}main-v2`
-const BRIDGE_SCRIPT_ID = `${SCRIPT_ID_PREFIX}bridge-v2`
+const MAIN_SCRIPT_ID = `${SCRIPT_ID_PREFIX}main-v3`
+const BRIDGE_SCRIPT_ID = `${SCRIPT_ID_PREFIX}bridge-v3`
 const MAIN_FILE = 'assets/same-tab-main.js'
 const BRIDGE_FILE = 'assets/same-tab-content.js'
 let pending: Promise<void> = Promise.resolve()

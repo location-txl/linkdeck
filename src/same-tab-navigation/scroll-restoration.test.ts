@@ -84,6 +84,61 @@ describe('返回时恢复来源页滚动位置', () => {
     expect(scrollY).toBe(3_000)
   })
 
+  it('updates an existing snapshot when leaving again through a native same-tab link', async () => {
+    const link = document.createElement('a')
+    link.href = '/article/1'
+    link.target = '_blank'
+    controller.handleClick(ordinaryClick(link))
+    window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    scrollY = 0
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    await vi.advanceTimersByTimeAsync(32)
+    expect(scrollY).toBe(3_000)
+
+    scrollY = 1_000
+    link.target = '_self'
+    controller.handleClick(ordinaryClick(link))
+    window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    scrollY = 0
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    await vi.advanceTimersByTimeAsync(32)
+    expect(scrollY).toBe(1_000)
+    expect(JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? '[]')).toEqual([{ key: entryKey, x: 0, y: 1_000 }])
+  })
+
+  it.each([0, 32])('keeps the original snapshot when leaving before restoration completes (%i ms)', async (delay) => {
+    const link = document.createElement('a')
+    link.href = '/article/1'
+    link.target = '_blank'
+    controller.handleClick(ordinaryClick(link))
+    window.dispatchEvent(new PageTransitionEvent('pagehide'))
+
+    pageHeight = 800
+    scrollY = 80
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    await vi.advanceTimersByTimeAsync(delay)
+    expect(scrollTo).not.toHaveBeenCalled()
+    window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    expect(JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? '[]')).toEqual([{ key: entryKey, x: 0, y: 3_000 }])
+
+    pageHeight = 5_000
+    scrollY = 0
+    window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true }))
+    await vi.advanceTimersByTimeAsync(32)
+    expect(scrollTo).toHaveBeenCalledWith({ left: 0, top: 3_000, behavior: 'instant' })
+    expect(scrollY).toBe(3_000)
+  })
+
+  it('does not create leave snapshots without a rewritten navigation or update them while disabled', () => {
+    window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    expect(sessionStorage.getItem(SCROLL_KEY)).toBeNull()
+    sessionStorage.setItem(SCROLL_KEY, JSON.stringify([{ key: entryKey, x: 0, y: 3_000 }]))
+    controller.update(null)
+    scrollY = 1_000
+    window.dispatchEvent(new PageTransitionEvent('pagehide'))
+    expect(JSON.parse(sessionStorage.getItem(SCROLL_KEY) ?? '[]')).toEqual([{ key: entryKey, x: 0, y: 3_000 }])
+  })
+
   it('cancels pending restoration when the site rule is disabled', async () => {
     sessionStorage.setItem(SCROLL_KEY, JSON.stringify([{ key: entryKey, x: 0, y: 3_000 }]))
     controller.dispose()

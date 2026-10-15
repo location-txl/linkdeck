@@ -61,6 +61,16 @@ function clone<T>(value: T): T {
   return JSON.parse(JSON.stringify(value)) as T
 }
 
+function originIncludes(granted: string, requested: string): boolean {
+  const [scheme, host] = requested.split('://')
+  const [grantedScheme, grantedHost] = granted.split('://')
+  const target = host.split('/')[0]
+  const allowed = grantedHost.split('/')[0]
+  return (grantedScheme === scheme || grantedScheme === '*') &&
+    (allowed === '*' || allowed === target || (allowed.startsWith('*.') &&
+      (target.replace(/^\*\./, '') === allowed.slice(2) || target.endsWith(`.${allowed.slice(2)}`))))
+}
+
 function select(store: Store, keys?: string | string[] | Record<string, unknown> | null): Store {
   if (keys === undefined || keys === null) return clone(store)
   const requested = typeof keys === 'string' ? [keys] : Array.isArray(keys) ? keys : Object.keys(keys)
@@ -167,15 +177,7 @@ export function installChromeMock(initialSync: Store = {}) {
     registeredScripts = registeredScripts.filter((script) => !ids.includes(script.id))
   })
   permissionsContains.mockImplementation(async ({ origins }: { origins: string[] }) => origins.every((requested) =>
-    grantedOrigins.some((granted) => {
-      const [scheme, host] = requested.split('://')
-      const [grantedScheme, grantedHost] = granted.split('://')
-      const target = host.split('/')[0]
-      const allowed = grantedHost.split('/')[0]
-      return (grantedScheme === scheme || grantedScheme === '*') &&
-        (allowed === '*' || allowed === target || (allowed.startsWith('*.') &&
-          (target.replace(/^\*\./, '') === allowed.slice(2) || target.endsWith(`.${allowed.slice(2)}`))))
-    })))
+    grantedOrigins.some((granted) => originIncludes(granted, requested))))
   permissionsGetAll.mockImplementation(async () => ({ origins: [...grantedOrigins] }))
   permissionsRequest.mockImplementation(async ({ origins }: { origins: string[] }) => {
     grantedOrigins = [...new Set([...grantedOrigins, ...origins])]
@@ -183,8 +185,10 @@ export function installChromeMock(initialSync: Store = {}) {
     return true
   })
   permissionsRemove.mockImplementation(async ({ origins }: { origins: string[] }) => {
-    grantedOrigins = grantedOrigins.filter((origin) => !origins.includes(origin))
-    permissionsOnRemovedListeners.forEach((listener) => listener({ origins }))
+    // Chrome 撤销父域模式时也会移除它覆盖的已获授权，包含更具体的域名模式。
+    const removed = grantedOrigins.filter((origin) => origins.some((requested) => originIncludes(requested, origin)))
+    grantedOrigins = grantedOrigins.filter((origin) => !removed.includes(origin))
+    permissionsOnRemovedListeners.forEach((listener) => listener({ origins: removed }))
     return true
   })
   tabsSendMessage.mockResolvedValue(undefined)

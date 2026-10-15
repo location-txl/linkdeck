@@ -4,7 +4,7 @@ import { normalizeSameTabSettings } from './rules'
 
 (() => {
   const host = window as Window & { __linkdeckSameTabNavigation?: SameTabNavigation }
-  if (host.__linkdeckSameTabNavigation?.version !== 2) {
+  if (host.__linkdeckSameTabNavigation?.version !== 3) {
     host.__linkdeckSameTabNavigation?.update(null)
     host.__linkdeckSameTabNavigation?.dispose()
     const navigation = createSameTabNavigation(window)

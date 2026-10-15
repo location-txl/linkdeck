@@ -70,15 +70,15 @@ describe('导航后台和权限生命周期', () => {
   it('replaces persisted older script registrations even when their match patterns are unchanged', async () => {
     const service = await configure()
     await chrome.scripting.registerContentScripts([
-      { id: 'linkdeck-same-tab-main', js: ['assets/same-tab-main.js'], matches: siteOrigins('scys.com'), world: 'MAIN' },
-      { id: 'linkdeck-same-tab-bridge', js: ['assets/same-tab-content.js'], matches: siteOrigins('scys.com'), world: 'ISOLATED' },
+      { id: 'linkdeck-same-tab-main-v2', js: ['assets/same-tab-main.js'], matches: siteOrigins('scys.com'), world: 'MAIN' },
+      { id: 'linkdeck-same-tab-bridge-v2', js: ['assets/same-tab-content.js'], matches: siteOrigins('scys.com'), world: 'ISOLATED' },
       { id: 'another-feature', js: ['another.js'], matches: ['https://example.com/*'] },
     ])
     await service.syncSameTabNavigation()
     const registered = await chrome.scripting.getRegisteredContentScripts()
     expect(registered.filter((script) => script.id.startsWith('linkdeck-same-tab-'))).toHaveLength(2)
-    expect(registered.filter((script) => script.id.startsWith('linkdeck-same-tab-')).every((script) => script.id.endsWith('-v2'))).toBe(true)
+    expect(registered.filter((script) => script.id.startsWith('linkdeck-same-tab-')).every((script) => script.id.endsWith('-v3'))).toBe(true)
     expect(registered.some((script) => script.id === 'another-feature')).toBe(true)
-    expect(scriptingUnregisterContentScripts).toHaveBeenCalledWith({ ids: ['linkdeck-same-tab-main', 'linkdeck-same-tab-bridge'] })
+    expect(scriptingUnregisterContentScripts).toHaveBeenCalledWith({ ids: ['linkdeck-same-tab-main-v2', 'linkdeck-same-tab-bridge-v2'] })
   })
 })
