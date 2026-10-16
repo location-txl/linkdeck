@@ -1,0 +1,17 @@
+{
+  "name": "@linkdeck/tab-search",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/messages.ts",
+    "./service": "./src/service.ts",
+    "./content": "./src/content.ts",
+    "./background": "./src/background.ts"
+  },
+  "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
+    "@testing-library/react": "^16.3.0",
+    "vitest": "^4.0.18"
+  }
+}

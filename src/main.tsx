@@ -1,7 +1,7 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
 import App from './App'
-import { CloseHistoryPage } from './tab-auto-close/CloseHistory'
+import { CloseHistoryPage } from '@linkdeck/tab-auto-close/history'
 import './styles.css'
 
 const viewParam = new URLSearchParams(window.location.search).get('view')

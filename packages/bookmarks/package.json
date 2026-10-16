@@ -1,0 +1,33 @@
+{
+  "name": "@linkdeck/bookmarks",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/types.ts",
+    "./repository": "./src/bookmark-repository.ts",
+    "./migration": "./src/snapshot-migration.ts",
+    "./preferences": "./src/preferences.ts",
+    "./browser": "./src/chrome-api.ts",
+    "./validation": "./src/validation.ts",
+    "./storage-changes": "./src/storage-changes.ts",
+    "./page": "./src/BookmarksPage.tsx",
+    "./settings": "./src/BookmarkSettings.tsx",
+    "./background": "./src/background.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@base-ui/react": "^1.7.0",
+    "@linkdeck/shared": "workspace:*",
+    "@linkdeck/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "vitest": "^4.0.18"
+  }
+}

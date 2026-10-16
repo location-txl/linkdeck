@@ -15,15 +15,23 @@
     "package:crx": "pnpm build && node scripts/package-crx.mjs"
   },
   "dependencies": {
-    "@base-ui/react": "^1.7.0",
+    "@linkdeck/bookmarks": "workspace:*",
+    "@linkdeck/data-transfer": "workspace:*",
+    "@linkdeck/gist-sync": "workspace:*",
+    "@linkdeck/same-tab-navigation": "workspace:*",
+    "@linkdeck/tab-auto-close": "workspace:*",
+    "@linkdeck/tab-search": "workspace:*",
+    "@linkdeck/ui": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/chrome": "^0.1.0",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",

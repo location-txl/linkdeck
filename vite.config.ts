@@ -1,6 +1,9 @@
+import { createRequire } from 'node:module'
 import { build, defineConfig, type Plugin } from 'vite'
 import react from '@vitejs/plugin-react'
 import manifest from './public/manifest.json' with { type: 'json' }
+
+const resolvePackage = createRequire(import.meta.url).resolve
 
 function resolveManifest(development: boolean): typeof manifest {
   if (!development) return manifest
@@ -46,7 +49,7 @@ function navigationScripts(): Plugin {
     name: 'linkdeck-navigation-scripts',
     apply: 'build',
     async closeBundle() {
-      for (const [name, entry] of [['same-tab-main', 'src/same-tab-navigation/main.ts'], ['same-tab-content', 'src/same-tab-navigation/content.ts']]) {
+      for (const [name, entry] of [['same-tab-main', resolvePackage('@linkdeck/same-tab-navigation/main')], ['same-tab-content', resolvePackage('@linkdeck/same-tab-navigation/content')]]) {
         await build({
           configFile: false,
           build: {
@@ -71,7 +74,7 @@ export default defineConfig({
       input: {
         popup: 'index.html',
         'service-worker': 'src/service-worker.ts',
-        'tab-search-overlay': 'src/tab-search/content.ts',
+        'tab-search-overlay': resolvePackage('@linkdeck/tab-search/content'),
       },
       output: {
         entryFileNames: 'assets/[name].js',

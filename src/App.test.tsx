@@ -2,11 +2,12 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import App from './App'
-import { serializeBackup } from './data-transfer/data-transfer'
-import { bookmarkRepository } from './lib/bookmark-repository'
+import { serializeBackup } from '@linkdeck/data-transfer'
+import { bookmarkRepository } from '@linkdeck/bookmarks/repository'
 import './styles.css'
-import { installChromeMock, tabsCreate } from './test/chrome'
-import { STORAGE_KEYS } from './types'
+import { installChromeMock, tabsCreate } from '@linkdeck/test-utils'
+import { STORAGE_KEYS } from '@linkdeck/bookmarks'
+import { STORAGE_KEYS as AUTO_CLOSE_STORAGE_KEYS } from '@linkdeck/tab-auto-close'
 
 describe('LinkDeck popup', () => {
   beforeEach(() => installChromeMock())
@@ -327,7 +328,7 @@ describe('LinkDeck popup', () => {
     expect(domain).toHaveValue('')
     expect(within(settings).getByRole('button', { name: '移除白名单 example.com' })).toBeInTheDocument()
     expect(chromeMock.storage.local.set).toHaveBeenLastCalledWith({
-      [STORAGE_KEYS.autoCloseSettings]: { enabled: false, idleMinutes: 120, whitelistDomains: ['example.com'] },
+      [AUTO_CLOSE_STORAGE_KEYS.autoCloseSettings]: { enabled: false, idleMinutes: 120, whitelistDomains: ['example.com'] },
     })
   })
 
@@ -348,7 +349,7 @@ describe('LinkDeck popup', () => {
     await user.keyboard('{Enter}')
     expect(chromeMock.storage.local.set).toHaveBeenCalledTimes(attempts + 1)
     expect(chromeMock.storage.local.set).toHaveBeenLastCalledWith({
-      [STORAGE_KEYS.autoCloseSettings]: { enabled: false, idleMinutes: 45, whitelistDomains: [] },
+      [AUTO_CLOSE_STORAGE_KEYS.autoCloseSettings]: { enabled: false, idleMinutes: 45, whitelistDomains: [] },
     })
   })
 

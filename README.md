@@ -8,6 +8,26 @@ LinkDeck 是一个面向 Chrome 和 Edge 的 Manifest V3 网址收藏插件。
 
 开发服务器便于调整 popup 界面；手动添加可用。
 
+## 工作区结构
+
+项目使用 pnpm workspace，最终统一构建为一个浏览器扩展。根目录的 `src/` 负责页面组合和后台启动，`public/`、构建配置及打包脚本保留在根目录。
+
+| 包 | 职责 |
+| --- | --- |
+| `@linkdeck/bookmarks` | 收藏、标签、筛选、存储迁移、右键收藏和角标 |
+| `@linkdeck/data-transfer` | JSON 备份校验、导入导出和界面 |
+| `@linkdeck/gist-sync` | Gist 同步、合并、状态与后台调度 |
+| `@linkdeck/tab-search` | 标签页与历史搜索、快捷键和浮层 |
+| `@linkdeck/tab-auto-close` | 闲置标签页关闭、设置和关闭历史 |
+| `@linkdeck/same-tab-navigation` | 当前标签页导航、网站授权和注入脚本 |
+| `@linkdeck/ui` | 公共控件及视觉样式 |
+| `@linkdeck/shared` | 网址处理、错误类型和容量计算 |
+| `@linkdeck/test-utils` | Chrome mock 和测试初始化，仅用于开发 |
+
+所有内部包位于 `packages/*`，均不单独发布。依赖使用 `workspace:*`，通过明确的包导出引用源码，不跨包访问内部路径。各功能拥有自己的类型、存储键和样式；设置和数据管理由应用组合，避免功能间循环依赖。
+
+继续在根目录使用 `pnpm dev`、`pnpm test`、`pnpm check`、`pnpm build:dev` 和打包命令，无需先构建内部包。`pnpm check` 包含依赖边界检查、全量测试、类型检查、生产构建及注入脚本校验。
+
 ## 构建与加载
 
 运行 `pnpm build` 后：
