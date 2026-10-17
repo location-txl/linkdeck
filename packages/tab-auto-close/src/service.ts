@@ -124,8 +124,10 @@ async function closeIfStillIdle(tabId: number, now: number): Promise<'closed' | 
   }
 }
 
-/** 记录一条自动关闭历史；历史写入失败不影响关闭流程。 */
+/** 仅记录非无痕标签页的自动关闭历史；历史写入失败不影响关闭流程。 */
 async function recordClosedTab(tab: AutoCloseTab, closedAt: number): Promise<void> {
+  if (tab.incognito) return
+
   try {
     await appendAutoCloseHistory({
       url: tab.url ?? '',

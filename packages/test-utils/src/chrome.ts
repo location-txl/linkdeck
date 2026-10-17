@@ -6,7 +6,7 @@ type StorageChange = { oldValue?: unknown; newValue?: unknown }
 type StorageListener = (changes: Record<string, StorageChange>, areaName: string) => void
 type ActivatedListener = (activeInfo: { tabId: number; windowId: number }) => void
 type UpdatedListener = (tabId: number, changeInfo: { url?: string }, tab: { active?: boolean; url?: string }) => void
-type MockTab = { id?: number; active?: boolean; pinned?: boolean; audible?: boolean; windowId?: number; title?: string; url?: string }
+type MockTab = { id?: number; active?: boolean; pinned?: boolean; audible?: boolean; incognito?: boolean; windowId?: number; title?: string; url?: string }
 type CommandListener = (command: string, tab?: MockTab) => void
 type CreatedListener = (tab: MockTab) => void
 type RemovedListener = (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void
