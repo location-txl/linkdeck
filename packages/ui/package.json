@@ -1,0 +1,19 @@
+{
+  "name": "@linkdeck/ui",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    "./icon": "./src/Icon.tsx",
+    "./modal": "./src/Modal.tsx",
+    "./confirm-modal": "./src/ConfirmModal.tsx",
+    "./favicon": "./src/Favicon.tsx",
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@linkdeck/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  }
+}

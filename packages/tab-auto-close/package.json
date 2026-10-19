@@ -1,0 +1,28 @@
+{
+  "name": "@linkdeck/tab-auto-close",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/types.ts",
+    "./preferences": "./src/preferences.ts",
+    "./service": "./src/service.ts",
+    "./settings": "./src/AutoCloseSettings.tsx",
+    "./history": "./src/CloseHistory.tsx",
+    "./background": "./src/background.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@linkdeck/shared": "workspace:*",
+    "@linkdeck/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "vitest": "^4.0.18"
+  }
+}

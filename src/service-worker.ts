@@ -1,26 +1,11 @@
-import { isGistSyncMessage } from './gist-sync/messages'
-import { gistSyncService, hasLinkDeckStorageChange } from './gist-sync/gist-sync'
+import { registerBookmarkBackground } from '@linkdeck/bookmarks/background'
+import { registerGistSyncBackground } from '@linkdeck/gist-sync/background'
+import { registerTabSearchBackground } from '@linkdeck/tab-search/background'
+import { registerAutoCloseBackground } from '@linkdeck/tab-auto-close/background'
+import { registerSameTabNavigationBackground } from '@linkdeck/same-tab-navigation/background'
 
-let syncTimer: ReturnType<typeof setTimeout> | undefined
-
-function scheduleSync(): void {
-  if (syncTimer) clearTimeout(syncTimer)
-  syncTimer = setTimeout(() => {
-    syncTimer = undefined
-    void gistSyncService.handle({ type: 'gist-sync:sync-now' })
-  }, 500)
-}
-
-chrome.runtime.onMessage.addListener((message: unknown, _sender, sendResponse) => {
-  if (!isGistSyncMessage(message)) return undefined
-  void gistSyncService.handle(message).then(sendResponse)
-  return true
-})
-
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName === 'sync' && hasLinkDeckStorageChange(changes)) scheduleSync()
-})
-
-chrome.runtime.onStartup.addListener(() => {
-  void gistSyncService.handle({ type: 'gist-sync:sync-now' })
-})
+registerBookmarkBackground()
+registerGistSyncBackground()
+registerTabSearchBackground()
+registerAutoCloseBackground()
+registerSameTabNavigationBackground()

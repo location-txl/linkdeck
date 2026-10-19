@@ -1,0 +1,33 @@
+{
+  "name": "@linkdeck/gist-sync",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/types.ts",
+    "./client": "./src/client.ts",
+    "./service": "./src/gist-sync.ts",
+    "./api": "./src/gist-api.ts",
+    "./messages": "./src/messages.ts",
+    "./merge": "./src/snapshot-merge.ts",
+    "./ui": "./src/GistSyncPanel.tsx",
+    "./status": "./src/GistSyncStatus.tsx",
+    "./use-state": "./src/useGistSyncState.ts",
+    "./background": "./src/background.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "dependencies": {
+    "@linkdeck/bookmarks": "workspace:*",
+    "@linkdeck/data-transfer": "workspace:*",
+    "@linkdeck/shared": "workspace:*",
+    "@linkdeck/ui": "workspace:*"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
+    "@testing-library/react": "^16.3.0",
+    "vitest": "^4.0.18"
+  }
+}

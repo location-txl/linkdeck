@@ -1,33 +1,46 @@
 {
   "name": "linkdeck",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
-  "description": "一个带分组与浏览器同步的轻量网址收藏扩展。",
+  "description": "一个带多标签与浏览器同步的轻量网址收藏扩展。",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && vite build && node scripts/verify-tab-search-bundle.mjs",
+    "build:dev": "tsc --noEmit && vite build --mode development",
     "test": "vitest run",
     "test:watch": "vitest",
     "check": "pnpm test && pnpm build",
-    "package": "pnpm build && node scripts/package.mjs"
+    "package": "pnpm build && node scripts/package.mjs",
+    "package:crx": "pnpm build && node scripts/package-crx.mjs"
   },
   "dependencies": {
+    "@linkdeck/bookmarks": "workspace:*",
+    "@linkdeck/data-transfer": "workspace:*",
+    "@linkdeck/gist-sync": "workspace:*",
+    "@linkdeck/same-tab-navigation": "workspace:*",
+    "@linkdeck/tab-auto-close": "workspace:*",
+    "@linkdeck/tab-search": "workspace:*",
+    "@linkdeck/ui": "workspace:*",
     "react": "^19.2.8",
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.0",
     "@testing-library/user-event": "^14.6.1",
     "@types/chrome": "^0.1.0",
+    "@types/node": "^24.0.0",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
     "bestzip": "^2.2.1",
+    "crx3": "^2.0.0",
     "jsdom": "^27.4.0",
     "typescript": "^5.9.3",
     "vite": "^8.0.10",
     "vitest": "^4.0.18"
-  }
+  },
+  "packageManager": "pnpm@12.11.2+sha512.25a51652a196785af5f28bda6dfe8dc582ebefa4ac1d180221ce1390231c5fb76637822ea4b6e4633ce74acdcb0a77f725af11bad38177fdeddaee818a955cb9"
 }

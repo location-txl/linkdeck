@@ -1,0 +1,19 @@
+{
+  "name": "@linkdeck/test-utils",
+  "version": "1.1.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/chrome.ts",
+    "./setup": "./src/setup.ts"
+  },
+  "dependencies": {
+    "@linkdeck/shared": "workspace:*"
+  },
+  "peerDependencies": {
+    "vitest": "^4.0.18"
+  },
+  "devDependencies": {
+    "@testing-library/jest-dom": "6.9.1"
+  }
+}

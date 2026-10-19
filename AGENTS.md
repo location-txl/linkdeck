@@ -2,7 +2,9 @@
 
 ## Project Structure & Module Organization
 
-LinkDeck is a React and TypeScript Manifest V3 extension. `src/App.tsx` owns the popup flow, while reusable UI lives in `src/components/`. Keep feature code together, as in `src/data-transfer/`; place browser integration, persistence, and validation in `src/lib/`. Shared types belong in `src/types.ts`, with test setup and Chrome mocks in `src/test/`.
+LinkDeck is a React and TypeScript Manifest V3 extension organized as a pnpm workspace. `src/` contains application entrypoints, feature composition, and integration tests. Feature implementation, types, storage keys, styles, and colocated tests live in `packages/bookmarks`, `packages/data-transfer`, `packages/gist-sync`, `packages/tab-search`, `packages/tab-auto-close`, and `packages/same-tab-navigation`. Shared visual components live in `packages/ui`, small common utilities in `packages/shared`, and Chrome mocks and test setup in `packages/test-utils`.
+
+Internal packages are private and export TypeScript source for the root Vite build. Declare internal dependencies with `workspace:*` and import other packages through their explicit `exports` subpaths. Keep UI, background, and injected-script entrypoints separate. Feature packages must not import application files or depend on each other cyclically. Keep `test-utils` in development dependencies only.
 
 Static extension files are under `public/`. Store artwork lives in `assets/` and `store-assets/`; release copy is in `docs/`. `scripts/package.mjs` creates the archive. Do not edit or commit generated `dist/` and `release/` output.
 
@@ -13,7 +15,7 @@ Static extension files are under `public/`. Store artwork lives in `assets/` and
 - `pnpm test` runs Vitest once; `pnpm test:watch` reruns tests while editing.
 - `pnpm build` type-checks with `tsc --noEmit` and builds the extension into `dist/`.
 - `pnpm check` runs tests and the production build; use it before a pull request.
-- `pnpm package` rebuilds and creates `release/linkdeck-v1.0.0.zip`.
+- `pnpm package` rebuilds and creates `release/linkdeck-v1.1.0.zip`.
 
 ## Coding Style & Naming Conventions
 
@@ -21,7 +23,7 @@ Use two-space indentation, single quotes, no semicolons, and trailing commas in 
 
 ## Testing Guidelines
 
-Tests use Vitest, jsdom, and Testing Library. Name them `*.test.ts` or `*.test.tsx` and colocate them with the implementation. Use `src/test/chrome.ts` for browser APIs. Cover user flows, storage edges, validation failures, and rollback paths. There is no coverage threshold, but new behavior should include focused regression tests.
+Tests use Vitest, jsdom, and Testing Library. Name them `*.test.ts` or `*.test.tsx` and colocate them with the implementation. Use `@linkdeck/test-utils` for browser APIs. Root tests cover feature composition, background registration, and workspace dependency boundaries. Cover user flows, storage edges, validation failures, and rollback paths. There is no coverage threshold, but new behavior should include focused regression tests.
 
 ## Commit & Pull Request Guidelines
 
