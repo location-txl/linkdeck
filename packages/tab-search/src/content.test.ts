@@ -186,7 +186,6 @@ describe('tab search overlay', () => {
     const attachShadow = vi.spyOn(HTMLElement.prototype, 'attachShadow')
     await import('./content')
 
-    const host = document.getElementById(HOST_ID)
     const shadow = attachShadow.mock.results[0]?.value as ShadowRoot
     await waitFor(() => expect(shadow.querySelectorAll('[role="option"]')).toHaveLength(1))
     const input = shadow.querySelector('input') as HTMLInputElement
@@ -244,7 +243,6 @@ describe('tab search overlay', () => {
     const attachShadow = vi.spyOn(HTMLElement.prototype, 'attachShadow')
     await import('./content')
 
-    const host = document.getElementById(HOST_ID)
     const shadow = attachShadow.mock.results[0]?.value as ShadowRoot
     await waitFor(() => expect(shadow.querySelectorAll('[role="option"]')).toHaveLength(1))
     const input = shadow.querySelector('input') as HTMLInputElement

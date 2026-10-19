@@ -22,14 +22,15 @@ LinkDeck 是面向 Chrome 和 Edge 的 Manifest V3 扩展，使用 React、TypeS
 | 安装依赖 | `pnpm install --frozen-lockfile` |
 | 开发 popup 界面 | `pnpm dev` |
 | 运行全部测试 | `pnpm test` |
+| 代码质量检查 | `pnpm lint` |
 | 运行指定测试 | `pnpm exec vitest run <测试文件路径>` |
 | 构建开发版扩展 | `pnpm build:dev` |
 | 类型检查、生产构建及搜索注入脚本校验 | `pnpm build` |
-| 全量测试与生产构建 | `pnpm check` |
+| 代码质量检查、全量测试与生产构建 | `pnpm check` |
 | 构建并生成商店 ZIP 包 | `pnpm package` |
 | 使用本地签名密钥生成 CRX | `pnpm package:crx` |
 
-项目没有单独的 lint 或 format 脚本。
+项目使用 ESLint 检查 JavaScript 和 TypeScript，没有单独的 format 脚本。
 
 ## 数据、权限与隐私
 

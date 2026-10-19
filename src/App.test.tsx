@@ -6,7 +6,6 @@ import { serializeBackup } from '@linkdeck/data-transfer'
 import { bookmarkRepository } from '@linkdeck/bookmarks/repository'
 import './styles.css'
 import { installChromeMock, tabsCreate } from '@linkdeck/test-utils'
-import { STORAGE_KEYS } from '@linkdeck/bookmarks'
 import { STORAGE_KEYS as AUTO_CLOSE_STORAGE_KEYS } from '@linkdeck/tab-auto-close'
 
 describe('LinkDeck popup', () => {

@@ -47,7 +47,6 @@ export function createScrollRestoration(win: Window): ScrollRestoration {
     stopPending()
     restoring = true
     let frame: number | undefined
-    let timeout: number
     let resize: ResizeObserver | undefined
     const cancelByUser = (event: Event) => {
       if (!event.isTrusted) return
@@ -85,7 +84,7 @@ export function createScrollRestoration(win: Window): ScrollRestoration {
       resize.observe(win.document.documentElement)
     }
     for (const event of ['wheel', 'touchstart', 'pointerdown', 'keydown']) win.addEventListener(event, cancelByUser, true)
-    timeout = win.setTimeout(stop, RESTORE_TIMEOUT_MS)
+    const timeout = win.setTimeout(stop, RESTORE_TIMEOUT_MS)
     stopPending = stop
     schedule()
   }

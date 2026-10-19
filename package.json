@@ -10,7 +10,8 @@
     "build:dev": "tsc --noEmit && vite build --mode development",
     "test": "vitest run",
     "test:watch": "vitest",
-    "check": "pnpm test && pnpm build",
+    "lint": "eslint . --max-warnings 0",
+    "check": "pnpm lint && pnpm test && pnpm build",
     "package": "pnpm build && node scripts/package.mjs",
     "package:crx": "pnpm build && node scripts/package-crx.mjs"
   },
@@ -26,6 +27,7 @@
     "react-dom": "^19.2.8"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@linkdeck/test-utils": "workspace:*",
     "@testing-library/jest-dom": "6.9.1",
     "@testing-library/react": "^16.3.0",
@@ -37,8 +39,11 @@
     "@vitejs/plugin-react": "^5.1.1",
     "bestzip": "^2.2.1",
     "crx3": "^2.0.0",
+    "eslint": "^10.12.0",
+    "globals": "^17.13.0",
     "jsdom": "^27.4.0",
     "typescript": "^5.9.3",
+    "typescript-eslint": "^8.71.1",
     "vite": "^8.0.10",
     "vitest": "^4.0.18"
   },

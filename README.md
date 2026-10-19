@@ -26,7 +26,9 @@ LinkDeck 是一个面向 Chrome 和 Edge 的 Manifest V3 网址收藏插件。
 
 所有内部包位于 `packages/*`，均不单独发布。依赖使用 `workspace:*`，通过明确的包导出引用源码，不跨包访问内部路径。各功能拥有自己的类型、存储键和样式；设置和数据管理由应用组合，避免功能间循环依赖。
 
-继续在根目录使用 `pnpm dev`、`pnpm test`、`pnpm check`、`pnpm build:dev` 和打包命令，无需先构建内部包。`pnpm check` 包含依赖边界检查、全量测试、类型检查、生产构建及注入脚本校验。
+继续在根目录使用 `pnpm dev`、`pnpm lint`、`pnpm test`、`pnpm check`、`pnpm build:dev` 和打包命令，无需先构建内部包。`pnpm check` 包含 ESLint、依赖边界检查、全量测试、类型检查、生产构建及注入脚本校验。
+
+GitHub Actions 使用 Node.js 24 和 `package.json` 声明的 pnpm 版本，在 main 分支收到推送，以及任何 PR 创建、更新代码、重新打开或转为待审阅时自动执行 lint、单元测试和编译检查，也支持手动触发。同一分支或 PR 的新检查会取消尚未完成的旧检查。
 
 ## 构建与加载
 

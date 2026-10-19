@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { BookmarkRepository } from './bookmark-repository'
-import { STORAGE_KEYS, SYNC_QUOTA_BYTES, type CollectionSnapshot } from './types'
+import { STORAGE_KEYS, type CollectionSnapshot } from './types'
 import { getLocalStore, getSyncStore, installChromeMock } from '@linkdeck/test-utils'
 
 function snapshot(): CollectionSnapshot {
