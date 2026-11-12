@@ -5,7 +5,7 @@ type Post = { url: string; title: string }
 const ARTICLE = 'article[data-testid="tweet"]'
 
 export function readPost(article: Element): Post | undefined {
-  const belongsToPost = (node: Element) => node.closest(ARTICLE) === article && !node.closest('[role="link"]')
+  const belongsToPost = (node: Element) => node.closest(ARTICLE) === article && !node.closest('[role="link"]:not(a)')
   const time = [...article.querySelectorAll('a[href] time')].find(belongsToPost)
   const href = time?.closest('a')?.getAttribute('href')
   if (!href) return undefined
@@ -62,7 +62,7 @@ export function installXBookmark(): () => void {
   const onClick = (event: MouseEvent) => {
     const button = event.target instanceof Element ? event.target.closest('button[data-testid="bookmark"], button[data-testid="removeBookmark"]') : null
     const article = button?.closest(ARTICLE)
-    if (!button || !article || button.closest('[role="link"]')) return
+    if (!button || !article || button.closest('[role="link"]:not(a)')) return
     pending.delete(article)
     if (button.getAttribute('data-testid') !== 'bookmark') return
     const post = readPost(article)
@@ -75,7 +75,7 @@ export function installXBookmark(): () => void {
         continue
       }
       const saved = [...article.querySelectorAll('button[data-testid="removeBookmark"]')]
-        .some((button) => button.closest(ARTICLE) === article && !button.closest('[role="link"]'))
+        .some((button) => button.closest(ARTICLE) === article && !button.closest('[role="link"]:not(a)'))
       if (saved) {
         pending.delete(article)
         void save(post)
@@ -84,30 +84,39 @@ export function installXBookmark(): () => void {
   })
   document.addEventListener('click', onClick, true)
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-testid'] })
-  const onMessage = (message: unknown) => {
-    if (message && typeof message === 'object' && 'type' in message && message.type === X_BOOKMARK_STOP) cleanup()
-    return undefined
-  }
   const cleanup = () => {
     active = false
     observer.disconnect()
     pending.clear()
     document.removeEventListener('click', onClick, true)
-    chrome.runtime.onMessage.removeListener(onMessage)
     notice?.remove()
     clearTimeout(noticeTimer)
   }
-  chrome.runtime.onMessage.addListener(onMessage)
   return cleanup
 }
 
 if (location.origin === 'https://x.com') {
   const scope = globalThis as typeof globalThis & { linkdeckXBookmarkCleanup?: () => void }
-  scope.linkdeckXBookmarkCleanup?.()
-  // 重复注入与权限撤销都可能发生在状态读取期间，旧实例不能重新启动。
-  let cancelled = false
-  scope.linkdeckXBookmarkCleanup = () => { cancelled = true }
-  void chrome.runtime.sendMessage({ type: X_BOOKMARK_STATE }).then((response: XBookmarkResponse) => {
-    if (!cancelled && response.ok && response.enabled) scope.linkdeckXBookmarkCleanup = installXBookmark()
-  }).catch(() => undefined)
+  // 后台唤醒会重复注入，保留初始化中的实例以及正在保存和重试的状态。
+  if (!scope.linkdeckXBookmarkCleanup) {
+    let cancelled = false
+    let uninstall: (() => void) | undefined
+    const cleanup = () => {
+      cancelled = true
+      uninstall?.()
+      chrome.runtime.onMessage.removeListener(onMessage)
+      if (scope.linkdeckXBookmarkCleanup === cleanup) delete scope.linkdeckXBookmarkCleanup
+    }
+    const onMessage = (message: unknown) => {
+      if (message && typeof message === 'object' && 'type' in message && message.type === X_BOOKMARK_STOP) cleanup()
+      return undefined
+    }
+    scope.linkdeckXBookmarkCleanup = cleanup
+    chrome.runtime.onMessage.addListener(onMessage)
+    void chrome.runtime.sendMessage({ type: X_BOOKMARK_STATE }).then((response: XBookmarkResponse) => {
+      if (cancelled) return
+      if (response.ok && response.enabled) uninstall = installXBookmark()
+      else cleanup()
+    }).catch(cleanup)
+  }
 }
