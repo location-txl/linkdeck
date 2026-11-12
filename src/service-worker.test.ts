@@ -68,8 +68,8 @@ describe('extension service worker', () => {
       created: true,
       tagsMerged: false,
     }))
-    const { gistSyncService } = await import('@linkdeck/gist-sync/service')
-    const handle = vi.spyOn(gistSyncService, 'handle').mockResolvedValue({
+    const { githubSyncService } = await import('@linkdeck/github-sync/service')
+    const handle = vi.spyOn(githubSyncService, 'handle').mockResolvedValue({
       ok: true,
       state: { status: 'disconnected' },
     })
@@ -77,7 +77,7 @@ describe('extension service worker', () => {
 
     storageListener?.({ [STORAGE_KEYS.meta]: { newValue: {} } }, 'sync')
     await vi.advanceTimersByTimeAsync(500)
-    expect(handle).toHaveBeenCalledWith({ type: 'gist-sync:sync-now' })
+    expect(handle).toHaveBeenCalledWith({ type: 'github-sync:sync-now' })
 
     storageListener?.({ [`${STORAGE_KEYS.tagPrefix}work`]: { newValue: {} } }, 'sync')
     await vi.advanceTimersByTimeAsync(500)
@@ -91,9 +91,11 @@ describe('extension service worker', () => {
     await Promise.resolve()
     expect(handle).toHaveBeenCalledTimes(3)
 
-    handle.mockResolvedValueOnce({ ok: true, state: { status: 'syncing' } })
+    const { LEGACY_GIST_STORAGE_KEY } = await import('@linkdeck/github-sync')
+    await chrome.storage.local.set({ [LEGACY_GIST_STORAGE_KEY]: { credentials: { token: 'obsolete' } } })
     installedListener?.()
-    await Promise.resolve()
+    await vi.advanceTimersByTimeAsync(0)
+    expect(await chrome.storage.local.get(LEGACY_GIST_STORAGE_KEY)).toEqual({})
     expect(handle).toHaveBeenCalledTimes(4)
     expect(removeAllContextMenus).toHaveBeenCalledOnce()
     expect(createContextMenu).toHaveBeenCalledWith({
@@ -126,14 +128,14 @@ describe('extension service worker', () => {
     })
 
     await vi.advanceTimersByTimeAsync(3_000)
-    expect(handle).toHaveBeenCalledTimes(5)
-    expect(handle).toHaveBeenLastCalledWith({ type: 'gist-sync:sync-now' })
+    expect(handle).toHaveBeenCalledTimes(4)
+    expect(handle).toHaveBeenLastCalledWith({ type: 'github-sync:sync-now' })
 
     const respond = vi.fn()
-    expect(messageListener?.({ type: 'gist-sync:get-status' }, {}, respond)).toBe(true)
+    expect(messageListener?.({ type: 'github-sync:get-status' }, {}, respond)).toBe(true)
     await Promise.resolve()
     await Promise.resolve()
-    expect(handle).toHaveBeenCalledWith({ type: 'gist-sync:get-status' })
+    expect(handle).toHaveBeenCalledWith({ type: 'github-sync:get-status' })
     expect(respond).toHaveBeenCalledWith({ ok: true, state: { status: 'disconnected' } })
   })
 
@@ -219,7 +221,7 @@ describe('extension service worker', () => {
     expect(runtimeOnMessageListeners).toHaveLength(3)
 
     const cases = [
-      { message: { type: 'gist-sync:get-status' }, expected: { ok: true, state: { status: 'disconnected' } } },
+      { message: { type: 'github-sync:get-status' }, expected: { ok: true, state: { status: 'disconnected' } } },
       { message: { type: 'tab-search:get-tabs' }, expected: undefined },
       { message: { type: 'same-tab-navigation:get-rule' }, expected: { ok: true, rule: null } },
     ]
