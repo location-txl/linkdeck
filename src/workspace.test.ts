@@ -109,6 +109,6 @@ describe('workspace boundaries', () => {
       }
     }
     visit(join(root, 'src/service-worker.ts'))
-    for (const specifier of ['@linkdeck/tab-search/content', '@linkdeck/same-tab-navigation/main', '@linkdeck/same-tab-navigation/content']) visit(resolveInternal(specifier))
+    for (const specifier of ['@linkdeck/bookmarks/x-bookmark-content', '@linkdeck/tab-search/content', '@linkdeck/same-tab-navigation/main', '@linkdeck/same-tab-navigation/content']) visit(resolveInternal(specifier))
   })
 })

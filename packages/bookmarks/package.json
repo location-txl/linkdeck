@@ -13,6 +13,8 @@
     "./storage-changes": "./src/storage-changes.ts",
     "./page": "./src/BookmarksPage.tsx",
     "./settings": "./src/BookmarkSettings.tsx",
+    "./x-bookmark-content": "./src/x-bookmark/content.ts",
+    "./x-bookmark-settings": "./src/x-bookmark/XBookmarkSettings.tsx",
     "./background": "./src/background.ts",
     "./styles.css": "./src/styles.css"
   },

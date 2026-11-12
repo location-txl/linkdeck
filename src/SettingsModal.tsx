@@ -1,3 +1,4 @@
+import { XBookmarkSettingsPanel } from '@linkdeck/bookmarks/x-bookmark-settings'
 import { BookmarkSettingsPanel } from '@linkdeck/bookmarks/settings'
 import type { TagClickMode } from '@linkdeck/bookmarks'
 import { SameTabSettingsPanel } from '@linkdeck/same-tab-navigation/settings'
@@ -10,6 +11,7 @@ export function SettingsModal({ mode, onSelectMode, onClose }: { mode: TagClickM
     <Modal title="设置" onClose={onClose}>
       <div className="settings">
         <BookmarkSettingsPanel mode={mode} onSelectMode={onSelectMode} />
+        <XBookmarkSettingsPanel />
         <SameTabSettingsPanel />
         <AutoCloseSettingsPanel />
         <section className="settings__section settings__about" aria-labelledby="settings-about-title">

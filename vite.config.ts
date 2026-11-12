@@ -43,13 +43,13 @@ function extensionManifest(): Plugin {
   }
 }
 
-/** 独立构建两个注入入口，避免共享模块生成页面不能加载的 ESM import。 */
+/** 独立构建注入入口，避免共享模块生成页面不能加载的 ESM import。 */
 function navigationScripts(): Plugin {
   return {
     name: 'linkdeck-navigation-scripts',
     apply: 'build',
     async closeBundle() {
-      for (const [name, entry] of [['same-tab-main', resolvePackage('@linkdeck/same-tab-navigation/main')], ['same-tab-content', resolvePackage('@linkdeck/same-tab-navigation/content')]]) {
+      for (const [name, entry] of [['x-bookmark-content', resolvePackage('@linkdeck/bookmarks/x-bookmark-content')], ['same-tab-main', resolvePackage('@linkdeck/same-tab-navigation/main')], ['same-tab-content', resolvePackage('@linkdeck/same-tab-navigation/content')]]) {
         await build({
           configFile: false,
           build: {

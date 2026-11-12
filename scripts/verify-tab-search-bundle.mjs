@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises'
 import { Script } from 'node:vm'
 
-for (const name of ['tab-search-overlay', 'same-tab-main', 'same-tab-content']) {
+for (const name of ['x-bookmark-content', 'tab-search-overlay', 'same-tab-main', 'same-tab-content']) {
   const scriptPath = new URL(`../dist/assets/${name}.js`, import.meta.url)
   const source = await readFile(scriptPath, 'utf8')
   if (/^\s*(?:import|export)\b/m.test(source)) {

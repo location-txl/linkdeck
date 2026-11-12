@@ -1,3 +1,4 @@
+import { registerXBookmarkBackground } from './x-bookmark/background'
 import { bookmarkRepository } from './bookmark-repository'
 import { hasLinkDeckStorageChange } from './storage-changes'
 import { MAX_BOOKMARK_TITLE_LENGTH, hasSameUrl } from '@linkdeck/shared'
@@ -69,6 +70,7 @@ async function saveCurrentPage(pageUrl: string, title?: string): Promise<void> {
 
 /** 注册收藏角标、右键收藏和启动恢复所需的后台事件。 */
 export function registerBookmarkBackground(): void {
+  registerXBookmarkBackground()
   void chrome.action.setBadgeBackgroundColor({ color: SAVED_BADGE_COLOR })
   chrome.tabs.onActivated.addListener(({ tabId }) => {
     void refreshTabBadge(tabId)
