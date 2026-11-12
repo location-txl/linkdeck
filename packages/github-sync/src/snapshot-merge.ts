@@ -422,6 +422,9 @@ export function mergeThreeWaySnapshots(
   remote: CollectionSnapshot,
   choice?: ConflictChoice,
 ): ThreeWayMergeResult {
+  if (sameSnapshot(base, local)) return { snapshot: clone(remote), conflicts: [] }
+  if (sameSnapshot(base, remote)) return { snapshot: clone(local), conflicts: [] }
+
   const conflicts: string[] = []
   const baseTags = mapById(base.meta.tags)
   const localTags = mapById(local.meta.tags)

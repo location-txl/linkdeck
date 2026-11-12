@@ -11,7 +11,7 @@ function copy(): CollectionSnapshot {
   return JSON.parse(JSON.stringify(base)) as CollectionSnapshot
 }
 
-describe('Gist 三方合并', () => {
+describe('收藏快照合并', () => {
   it('adopts a one-sided edit and deletion', () => {
     const local = copy()
     local.bookmarks[0]!.title = 'GitHub Docs'
@@ -67,7 +67,7 @@ describe('Gist 三方合并', () => {
       .toMatchObject({ name: '远端工作', pinned: true })
   })
 
-  it('keeps a same-name tag pinned during the first Gist merge', () => {
+  it('keeps a same-name tag pinned during the first merge', () => {
     const local = copy()
     const remote = copy()
     remote.meta.tags[0] = { ...remote.meta.tags[0]!, id: 'remote-work', pinned: true, updatedAt: 2 }

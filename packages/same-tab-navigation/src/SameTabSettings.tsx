@@ -165,7 +165,7 @@ export function SameTabSettingsPanel() {
       </ul>}
       {error && <p className="form__error" role="alert">{error}</p>}
       <p className="same-tab-settings__note">域名包含子域名，重叠时使用更具体的规则。⌘/Ctrl 点击、Shift 点击和中键保留原行为。配置仅保存在当前浏览器。</p>
-      <p className="same-tab-settings__note">下载和显式弹窗不受影响。已打开的网页若仍新开标签页，请刷新后再试。与 Gist 同步权限重叠的网站授权会保留，移除规则后仍停止导航改写。</p>
+      <p className="same-tab-settings__note">下载和显式弹窗不受影响。已打开的网页若仍新开标签页，请刷新后再试。与 GitHub 同步权限重叠的网站授权会保留，移除规则后仍停止导航改写。</p>
       {!available && <p className="same-tab-settings__note">请在浏览器扩展中配置网站权限。</p>}
     </section>
   )

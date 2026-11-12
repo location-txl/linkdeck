@@ -172,9 +172,9 @@ importers:
       '@linkdeck/data-transfer':
         specifier: workspace:*
         version: link:packages/data-transfer
-      '@linkdeck/gist-sync':
+      '@linkdeck/github-sync':
         specifier: workspace:*
-        version: link:packages/gist-sync
+        version: link:packages/github-sync
       '@linkdeck/same-tab-navigation':
         specifier: workspace:*
         version: link:packages/same-tab-navigation
@@ -299,7 +299,7 @@ importers:
         specifier: ^4.0.18
         version: 4.1.10(@types/node@24.19.1)(jsdom@27.4.0(supports-color@7.2.0))(vite@8.2.1(@types/node@24.19.1))
 
-  packages/gist-sync:
+  packages/github-sync:
     dependencies:
       '@linkdeck/bookmarks':
         specifier: workspace:*

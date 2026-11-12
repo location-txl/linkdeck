@@ -18,7 +18,7 @@
   "dependencies": {
     "@linkdeck/bookmarks": "workspace:*",
     "@linkdeck/data-transfer": "workspace:*",
-    "@linkdeck/gist-sync": "workspace:*",
+    "@linkdeck/github-sync": "workspace:*",
     "@linkdeck/same-tab-navigation": "workspace:*",
     "@linkdeck/tab-auto-close": "workspace:*",
     "@linkdeck/tab-search": "workspace:*",
