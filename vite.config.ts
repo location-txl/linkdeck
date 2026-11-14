@@ -49,7 +49,7 @@ function navigationScripts(): Plugin {
     name: 'linkdeck-navigation-scripts',
     apply: 'build',
     async closeBundle() {
-      for (const [name, entry] of [['x-bookmark-content', resolvePackage('@linkdeck/bookmarks/x-bookmark-content')], ['same-tab-main', resolvePackage('@linkdeck/same-tab-navigation/main')], ['same-tab-content', resolvePackage('@linkdeck/same-tab-navigation/content')]]) {
+      for (const [name, entry] of [['x-bookmark-content', resolvePackage('@linkdeck/bookmarks/x-bookmark-content')], ['site-bookmark-content', resolvePackage('@linkdeck/bookmarks/site-bookmark-content')], ['site-bookmark-picker', resolvePackage('@linkdeck/bookmarks/site-bookmark-picker')], ['same-tab-main', resolvePackage('@linkdeck/same-tab-navigation/main')], ['same-tab-content', resolvePackage('@linkdeck/same-tab-navigation/content')]]) {
         await build({
           configFile: false,
           build: {

@@ -563,3 +563,90 @@
   gap: 7px;
   padding-top: 13px;
 }
+
+.site-bookmark-settings__add {
+  max-width: 100%;
+  overflow: hidden;
+  justify-self: start;
+  text-overflow: ellipsis;
+}
+
+.site-bookmark-settings__rules {
+  display: grid;
+  gap: 5px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.site-bookmark-settings__rules li {
+  display: grid;
+  gap: 6px;
+  padding: 6px 6px 6px 9px;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.site-bookmark-settings__rule {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.site-bookmark-settings__rule > span {
+  min-width: 0;
+  overflow: hidden;
+  font-size: 12px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-bookmark-settings__rule small {
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+  color: var(--ink-faint);
+  font-size: 9px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.site-bookmark-settings__form {
+  display: grid;
+  gap: 7px;
+  padding: 4px 2px 0;
+}
+
+.site-bookmark-settings__form label {
+  display: grid;
+  gap: 3px;
+  color: var(--ink-soft);
+  font-size: 10px;
+}
+
+.site-bookmark-settings__form input,
+.site-bookmark-settings__form select {
+  min-width: 0;
+  height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--paper);
+  color: var(--ink);
+  padding: 0 8px;
+  font: inherit;
+  font-size: 11px;
+}
+
+.site-bookmark-settings__form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+}
+
+.site-bookmark-settings__note {
+  margin: 10px 0 0;
+  color: var(--ink-faint);
+  font-size: 10px;
+  line-height: 1.4;
+}

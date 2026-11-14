@@ -15,6 +15,9 @@
     "./settings": "./src/BookmarkSettings.tsx",
     "./x-bookmark-content": "./src/x-bookmark/content.ts",
     "./x-bookmark-settings": "./src/x-bookmark/XBookmarkSettings.tsx",
+    "./site-bookmark-content": "./src/site-bookmark/content.ts",
+    "./site-bookmark-picker": "./src/site-bookmark/picker.ts",
+    "./site-bookmark-settings": "./src/site-bookmark/SiteBookmarkSettings.tsx",
     "./background": "./src/background.ts",
     "./styles.css": "./src/styles.css"
   },
