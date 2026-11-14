@@ -131,6 +131,22 @@ describe('元素选取器', () => {
     expect(document.documentElement.hasAttribute('data-linkdeck-picking')).toBe(false)
   })
 
+  it('clears the session guard on exit so the picker can be re-injected', () => {
+    const scope = globalThis as typeof globalThis & { linkdeckSiteBookmarkPickerCleanup?: () => void }
+    delete scope.linkdeckSiteBookmarkPickerCleanup
+    // 内部退出路径（Esc / 取消 / 保存成功）与外部清理走同一个 cleanup。
+    cleanup = installPicker()!
+    scope.linkdeckSiteBookmarkPickerCleanup = cleanup
+    pressEscape()
+    expect(scope.linkdeckSiteBookmarkPickerCleanup).toBeUndefined()
+    expect(document.querySelector('[data-linkdeck-picker]')).toBeNull()
+
+    cleanup = installPicker()!
+    scope.linkdeckSiteBookmarkPickerCleanup = cleanup
+    scope.linkdeckSiteBookmarkPickerCleanup()
+    expect(scope.linkdeckSiteBookmarkPickerCleanup).toBeUndefined()
+  })
+
   it('refuses to exceed the rule limit', async () => {
     const rules = Array.from({ length: MAX_SITE_RULES }, (_, index) => baseRule(index))
     await chrome.storage.local.set({ [SITE_BOOKMARK_KEY]: { enabled: true, rules } })

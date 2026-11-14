@@ -43,7 +43,8 @@ function canonicalUrl(config: ExtractConfig<UrlExtractSource>, trigger: Element,
   const raw = extractValue(config, trigger, container)
   if (!raw) return undefined
   try {
-    const url = new URL(raw, location.href)
+    // 相对链接按文档 <base> 解析，与浏览器实际跳转的地址一致。
+    const url = new URL(raw, document.baseURI)
     if (!['http:', 'https:'].includes(url.protocol) || url.username || url.password) return undefined
     return url.href
   } catch {
@@ -117,6 +118,8 @@ if ((location.protocol === 'https:' || location.protocol === 'http:') && typeof 
     const applyRules = async () => {
       if (cancelled) return
       const settings = await getSiteBookmarkSettings()
+      // 读取期间可能已收到 STOP：此时监听器与守卫已被回收，不能再安装新实例。
+      if (cancelled) return
       uninstall?.()
       uninstall = undefined
       // 总开关关闭时不依赖后台 STOP 消息兜底，页面侧立即停止监听。

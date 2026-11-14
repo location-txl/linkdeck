@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { installChromeMock, runtimeSendMessage } from '@linkdeck/test-utils'
+import { installChromeMock, runtimeOnMessageListeners, runtimeSendMessage } from '@linkdeck/test-utils'
 import { activeRulesFor, extractValue, installSiteBookmark } from './content'
-import { SITE_BOOKMARK_SAVE } from './messages'
+import { SITE_BOOKMARK_SAVE, SITE_BOOKMARK_STOP } from './messages'
 import { SITE_BOOKMARK_KEY, type SiteRule } from './types'
 
 const flush = async () => { await new Promise((resolve) => setTimeout(resolve, 0)) }
@@ -99,6 +99,15 @@ describe('站点收藏规则引擎', () => {
     cardButton(0).click()
     await flush()
     expect(runtimeSendMessage).toHaveBeenCalledExactlyOnceWith({ type: SITE_BOOKMARK_SAVE, ruleId: 'r1', url: PAGE_URL, title: '页面标题' })
+  })
+
+  it('resolves relative links against the document base', async () => {
+    document.body.innerHTML = '<article class="card"><h3><a href="posts/1">第一篇</a></h3><button data-testid="star">收藏</button></article>'
+    vi.spyOn(document, 'baseURI', 'get').mockReturnValue('http://localhost:3000/root/')
+    cleanups.push(installSiteBookmark([rule()]))
+    cardButton(0).click()
+    await flush()
+    expect(runtimeSendMessage).toHaveBeenCalledExactlyOnceWith({ type: SITE_BOOKMARK_SAVE, ruleId: 'r1', url: 'http://localhost:3000/root/posts/1', title: '第一篇' })
   })
 
   it('does not intercept the website click behaviour', async () => {
@@ -205,6 +214,22 @@ describe('站点收藏脚本初始化', () => {
     cardButton(0).click()
     await flush()
     expect(runtimeSendMessage).toHaveBeenCalledTimes(1)
+  })
+
+  it('does not install listeners when STOP arrives while settings load', async () => {
+    await chrome.storage.local.set({ [SITE_BOOKMARK_KEY]: { enabled: true, rules: [rule()] } })
+    let releaseSettings: (value: Record<string, unknown>) => void = () => undefined
+    vi.spyOn(chrome.storage.local, 'get').mockImplementation(() =>
+      new Promise<Record<string, unknown>>((resolve) => { releaseSettings = resolve }))
+    vi.resetModules()
+    await import('./content')
+    // 设置读取尚未完成时收到 STOP：实例取消，读取恢复后不得再安装监听。
+    runtimeOnMessageListeners.forEach((listener) => listener({ type: SITE_BOOKMARK_STOP }, {} as chrome.runtime.MessageSender, () => undefined))
+    releaseSettings({ [SITE_BOOKMARK_KEY]: { enabled: true, rules: [rule()] } })
+    await flush()
+    cardButton(0).click()
+    await flush()
+    expect(runtimeSendMessage).not.toHaveBeenCalled()
   })
 
   it('does nothing on pages without matching rules', async () => {

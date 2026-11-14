@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { getLocalStore, installChromeMock, permissionsGetAll, permissionsRequest, scriptingExecuteScript, setCurrentTab } from '@linkdeck/test-utils'
+import { STORAGE_KEYS } from '@linkdeck/same-tab-navigation'
 import { SiteBookmarkSettingsPanel } from './SiteBookmarkSettings'
 import { siteOrigins } from './rules'
 import { SITE_BOOKMARK_KEY, type SiteRule } from './types'
@@ -100,5 +101,30 @@ describe('站点收藏规则设置', () => {
     await waitFor(async () => expect(await permissionsGetAll()).toEqual({
       origins: ['http://*.github.com/*', 'https://*.github.com/*', ...siteOrigins('unrelated.test')],
     }))
+  })
+
+  it('keeps permissions that same-tab navigation still uses', async () => {
+    const navigationRule: SiteRule = { ...rule, id: 'rule-nav', domain: 'docs.test' }
+    await chrome.permissions.request({ origins: siteOrigins('docs.test') })
+    await storeRules([navigationRule])
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: { enabled: true, sites: [{ domain: 'docs.test', scope: 'site' }] } })
+    const user = userEvent.setup()
+    render(<SiteBookmarkSettingsPanel />)
+    await user.click(await screen.findByRole('button', { name: '删除 docs.test 规则' }))
+    await waitFor(() => expect(getLocalStore()[SITE_BOOKMARK_KEY]).toMatchObject({ rules: [] }))
+    // 导航功能仍在使用该域名，授权不能随收藏规则一起撤销。
+    await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: siteOrigins('docs.test') }))
+  })
+
+  it('releases shared permissions once navigation no longer uses the domain', async () => {
+    const navigationRule: SiteRule = { ...rule, id: 'rule-nav', domain: 'docs.test' }
+    await chrome.permissions.request({ origins: siteOrigins('docs.test') })
+    await storeRules([navigationRule])
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: { enabled: false, sites: [{ domain: 'docs.test', scope: 'site' }] } })
+    const user = userEvent.setup()
+    render(<SiteBookmarkSettingsPanel />)
+    await user.click(await screen.findByRole('button', { name: '删除 docs.test 规则' }))
+    await waitFor(() => expect(getLocalStore()[SITE_BOOKMARK_KEY]).toMatchObject({ rules: [] }))
+    await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: [] }))
   })
 })

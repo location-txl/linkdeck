@@ -155,8 +155,8 @@ export function installPicker(): (() => void) | undefined {
         // 成功提示靠自身超时消失，cleanup 不回收通知。
         notice.show('规则已保存，现在点击该按钮试试收藏。')
         cleanup()
-      } catch {
-        showError('保存规则失败，请重试。')
+      } catch (error) {
+        showError(error instanceof Error ? error.message : '保存规则失败，请重试。')
       }
     })()
   }
@@ -213,6 +213,9 @@ export function installPicker(): (() => void) | undefined {
     delete document.documentElement.dataset.linkdeckPicking
     root.remove()
     highlight.remove()
+    // 会话的每条退出路径都经过这里：同步清除全局守卫，允许同页面再次注入。
+    const scope = globalThis as typeof globalThis & { linkdeckSiteBookmarkPickerCleanup?: () => void }
+    if (scope.linkdeckSiteBookmarkPickerCleanup === cleanup) delete scope.linkdeckSiteBookmarkPickerCleanup
   }
 
   document.addEventListener('mousemove', onMouseMove, true)
@@ -227,14 +230,9 @@ export function installPicker(): (() => void) | undefined {
 // 非扩展环境（测试、工具链）加载此模块时跳过安装。
 if ((location.protocol === 'https:' || location.protocol === 'http:') && typeof chrome !== 'undefined') {
   const scope = globalThis as typeof globalThis & { linkdeckSiteBookmarkPickerCleanup?: () => void }
-  // 重复注入时保留进行中的选取会话；会话结束后守卫清除，允许重新选取。
+  // 重复注入时保留进行中的选取会话；cleanup 自身负责会话结束后清除守卫。
   if (!scope.linkdeckSiteBookmarkPickerCleanup) {
     const cleanup = installPicker()
-    if (cleanup) {
-      scope.linkdeckSiteBookmarkPickerCleanup = () => {
-        cleanup()
-        delete scope.linkdeckSiteBookmarkPickerCleanup
-      }
-    }
+    if (cleanup) scope.linkdeckSiteBookmarkPickerCleanup = cleanup
   }
 }

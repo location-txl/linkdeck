@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { getSameTabSettings } from '@linkdeck/same-tab-navigation/preferences'
 import { isXBookmarkEnabled } from '../x-bookmark/preferences'
 import { getSiteBookmarkSettings, setSiteBookmarkSettings } from './preferences'
 import { DEFAULT_SITE_BOOKMARK_SETTINGS, defaultTagName, matchesSite, normalizeSiteDomain, siteOrigins } from './rules'
@@ -273,13 +274,18 @@ export function SiteBookmarkSettingsPanel() {
       const { origins = [] } = await chrome.permissions.getAll()
       const required: string[] = chrome.runtime.getManifest().host_permissions ?? []
       const overlaps = (left: string, right: string) => matchesSite(left, right) || matchesSite(right, left)
-      // 保留其他规则和 X 书签联动仍在使用的授权，只清理本次删除独占的来源。
+      // 保留其他规则、X 书签联动和当前标签页导航仍在使用的授权，只清理本次删除独占的来源。
       const xActive = await isXBookmarkEnabled().catch(() => false)
+      // undefined 表示导航配置读取失败：无法确认归属时不撤销，避免误伤其他功能。
+      const sameTabDomains = await getSameTabSettings()
+        .then((settings) => settings.enabled ? settings.sites.map(({ domain }) => domain) : [])
+        .catch(() => undefined)
       const unused = origins.filter((origin) => {
         const grantedDomain = normalizeSiteDomain(origin.replace('://*.', '://'))
         if (!grantedDomain || !overlaps(grantedDomain, rule.domain)) return false
         if (rules.some((item) => overlaps(item.domain, grantedDomain))) return false
         if (xActive && overlaps(grantedDomain, 'x.com')) return false
+        if (sameTabDomains === undefined || sameTabDomains.some((domain) => overlaps(domain, grantedDomain))) return false
         return !required.some((requiredOrigin) => {
           const scheme = requiredOrigin.split('://')[0]
           if (scheme !== '*' && scheme !== origin.split('://')[0]) return false
