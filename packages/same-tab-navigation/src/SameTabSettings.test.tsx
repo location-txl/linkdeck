@@ -125,4 +125,48 @@ describe('当前标签页打开设置', () => {
     await user.click(remove)
     await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: [requiredOrigin, 'https://*.github.com/*', ...siteOrigins('unrelated.example')] }))
   })
+
+  it('keeps permissions still owned by other features when removing a rule', async () => {
+    const user = userEvent.setup()
+    await chrome.permissions.request({ origins: siteOrigins('scys.com') })
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: {
+      enabled: true,
+      sites: [{ domain: 'scys.com', scope: 'all' }],
+    } })
+    render(<SameTabSettingsPanel retainedDomains={async () => ['scys.com']} />)
+    const remove = await screen.findByRole('button', { name: '移除网站 scys.com' })
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    await waitFor(() => expect(screen.queryByRole('combobox')).not.toBeInTheDocument())
+    expect(await chrome.permissions.contains({ origins: siteOrigins('scys.com') })).toBe(true)
+  })
+
+  it('keeps permissions when retained domains cannot be determined', async () => {
+    const user = userEvent.setup()
+    await chrome.permissions.request({ origins: siteOrigins('scys.com') })
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: {
+      enabled: true,
+      sites: [{ domain: 'scys.com', scope: 'all' }],
+    } })
+    render(<SameTabSettingsPanel retainedDomains={async () => undefined} />)
+    const remove = await screen.findByRole('button', { name: '移除网站 scys.com' })
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    await waitFor(() => expect(screen.queryByRole('combobox')).not.toBeInTheDocument())
+    expect(await chrome.permissions.contains({ origins: siteOrigins('scys.com') })).toBe(true)
+  })
+
+  it('releases permissions when no other feature owns the domain', async () => {
+    const user = userEvent.setup()
+    await chrome.permissions.request({ origins: siteOrigins('scys.com') })
+    await chrome.storage.local.set({ [STORAGE_KEYS.sameTabSettings]: {
+      enabled: true,
+      sites: [{ domain: 'scys.com', scope: 'all' }],
+    } })
+    render(<SameTabSettingsPanel retainedDomains={async () => []} />)
+    const remove = await screen.findByRole('button', { name: '移除网站 scys.com' })
+    await waitFor(() => expect(remove).toBeEnabled())
+    await user.click(remove)
+    await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: [] }))
+  })
 })
