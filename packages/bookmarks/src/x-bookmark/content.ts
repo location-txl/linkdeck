@@ -1,4 +1,5 @@
 import { MAX_BOOKMARK_TITLE_LENGTH } from '@linkdeck/shared'
+import { createNotice } from '../content-notice'
 import { X_BOOKMARK_SAVE, X_BOOKMARK_STATE, X_BOOKMARK_STOP, type XBookmarkResponse } from './messages'
 
 type Post = { url: string; title: string }
@@ -22,34 +23,8 @@ export function readPost(article: Element): Post | undefined {
 /** 只跟踪用户主动添加书签后的状态变化，不扫描或导入已有书签。 */
 export function installXBookmark(): () => void {
   const pending = new Map<Element, Post>()
-  let active = true
-  let notice: HTMLDivElement | undefined
-  let noticeTimer: ReturnType<typeof setTimeout> | undefined
-  const showNotice = (text: string, retry?: () => void) => {
-    if (!active) return
-    notice?.remove()
-    clearTimeout(noticeTimer)
-    notice = document.createElement('div')
-    notice.setAttribute('role', 'status')
-    notice.dataset.linkdeckNotice = ''
-    Object.assign(notice.style, {
-      position: 'fixed', bottom: '24px', left: '50%', transform: 'translateX(-50%)',
-      zIndex: '2147483647', padding: '12px 18px', borderRadius: '12px',
-      background: '#17212b', color: '#fff', font: '14px/1.5 system-ui, sans-serif',
-      boxShadow: '0 4px 24px #0004', maxWidth: 'min(480px, 85vw)',
-    })
-    notice.append(document.createTextNode(text))
-    if (retry) {
-      const button = document.createElement('button')
-      button.type = 'button'
-      button.textContent = '重试'
-      Object.assign(button.style, { marginLeft: '12px', color: '#fff', background: 'transparent', border: '1px solid #fff', borderRadius: '4px', cursor: 'pointer' })
-      button.onclick = () => { button.disabled = true; retry() }
-      notice.append(button)
-    }
-    document.body.append(notice)
-    noticeTimer = setTimeout(() => notice?.remove(), retry ? 15000 : 4000)
-  }
+  const notice = createNotice()
+  const showNotice = notice.show
   const save = async (post: Post) => {
     try {
       const response = await chrome.runtime.sendMessage({ type: X_BOOKMARK_SAVE, ...post }) as XBookmarkResponse | undefined
@@ -85,12 +60,10 @@ export function installXBookmark(): () => void {
   document.addEventListener('click', onClick, true)
   observer.observe(document.body, { subtree: true, childList: true, attributes: true, attributeFilter: ['data-testid'] })
   const cleanup = () => {
-    active = false
     observer.disconnect()
     pending.clear()
     document.removeEventListener('click', onClick, true)
-    notice?.remove()
-    clearTimeout(noticeTimer)
+    notice.dispose()
   }
   return cleanup
 }
