@@ -218,9 +218,11 @@ describe('extension service worker', () => {
   it('routes each feature message to exactly one asynchronous responder', async () => {
     installChromeMock()
     await import('./service-worker')
-    expect(runtimeOnMessageListeners).toHaveLength(3)
+    expect(runtimeOnMessageListeners).toHaveLength(5)
 
     const cases = [
+      { message: { type: 'linkdeck:x-bookmark:state' }, expected: { ok: false, error: '无效的 X 页面来源。' } },
+      { message: { type: 'linkdeck:site-bookmark:save' }, expected: { ok: false, error: '无效的页面来源。' } },
       { message: { type: 'github-sync:get-status' }, expected: { ok: true, state: { status: 'disconnected' } } },
       { message: { type: 'tab-search:get-tabs' }, expected: undefined },
       { message: { type: 'same-tab-navigation:get-rule' }, expected: { ok: true, rule: null } },
@@ -244,18 +246,18 @@ describe('extension service worker', () => {
     await import('./service-worker')
     await import('./service-worker')
 
-    expect(runtimeOnMessageListeners).toHaveLength(3)
-    expect(runtimeOnStartupListeners).toHaveLength(4)
-    expect(runtimeOnInstalledListeners).toHaveLength(4)
-    expect(storageOnChangedListeners).toHaveLength(4)
+    expect(runtimeOnMessageListeners).toHaveLength(5)
+    expect(runtimeOnStartupListeners).toHaveLength(6)
+    expect(runtimeOnInstalledListeners).toHaveLength(6)
+    expect(storageOnChangedListeners).toHaveLength(6)
     expect(commandsOnCommandListeners).toHaveLength(1)
     expect(alarmsOnAlarmListeners).toHaveLength(1)
     expect(tabsOnActivatedListeners).toHaveLength(2)
     expect(tabsOnUpdatedListeners).toHaveLength(2)
     expect(tabsOnCreatedListeners).toHaveLength(1)
     expect(tabsOnRemovedListeners).toHaveLength(1)
-    expect(permissionsOnAddedListeners).toHaveLength(1)
-    expect(permissionsOnRemovedListeners).toHaveLength(1)
+    expect(permissionsOnAddedListeners).toHaveLength(3)
+    expect(permissionsOnRemovedListeners).toHaveLength(3)
     expect(tabsGet).not.toHaveBeenCalled()
   })
 

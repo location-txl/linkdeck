@@ -4,8 +4,11 @@ import userEvent from '@testing-library/user-event'
 import App from './App'
 import { serializeBackup } from '@linkdeck/data-transfer'
 import { bookmarkRepository } from '@linkdeck/bookmarks/repository'
+import { setSiteBookmarkSettings } from '@linkdeck/bookmarks/site-bookmark-preferences'
+import { STORAGE_KEYS as SAME_TAB_STORAGE_KEYS } from '@linkdeck/same-tab-navigation'
+import { siteOrigins } from '@linkdeck/same-tab-navigation/rules'
 import './styles.css'
-import { installChromeMock, tabsCreate } from '@linkdeck/test-utils'
+import { installChromeMock, permissionsGetAll, tabsCreate } from '@linkdeck/test-utils'
 import { STORAGE_KEYS as AUTO_CLOSE_STORAGE_KEYS } from '@linkdeck/tab-auto-close'
 
 describe('LinkDeck popup', () => {
@@ -304,6 +307,33 @@ describe('LinkDeck popup', () => {
     expect(within(settings).getByRole('checkbox', { name: /启用自动关闭/ })).toBeChecked()
     await user.click(within(settings).getByRole('button', { name: '移除白名单 example.com' }))
     expect(within(settings).queryByText('example.com')).not.toBeInTheDocument()
+  })
+
+  it('keeps site bookmark grants when removing a shared navigation rule', async () => {
+    await chrome.permissions.request({ origins: siteOrigins('example.com') })
+    await setSiteBookmarkSettings({ enabled: true, rules: [{
+      id: 'rule-example', domain: 'example.com', name: '示例站点', enabled: true,
+      triggerSelector: '.save-btn', tagName: '示例',
+      url: { source: { kind: 'pageUrl' } }, title: { source: { kind: 'pageTitle' } },
+      createdAt: 1, updatedAt: 1,
+    }] })
+    await chrome.storage.local.set({ [SAME_TAB_STORAGE_KEYS.sameTabSettings]: {
+      enabled: true,
+      sites: [{ domain: 'example.com', scope: 'all' }],
+    } })
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+
+    await user.click(within(settings).getByRole('button', { name: '移除网站 example.com' }))
+    await waitFor(() => expect(within(settings).queryByRole('button', { name: '移除网站 example.com' })).not.toBeInTheDocument())
+    expect(await chrome.permissions.contains({ origins: siteOrigins('example.com') })).toBe(true)
+
+    await user.click(within(settings).getByRole('button', { name: '删除 example.com 规则' }))
+    await waitFor(() => expect(within(settings).queryByRole('button', { name: '删除 example.com 规则' })).not.toBeInTheDocument())
+    await waitFor(async () => expect(await permissionsGetAll()).toEqual({ origins: [] }))
   })
 
   it('keeps automatic close input visible when local storage rejects a save', async () => {

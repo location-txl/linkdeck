@@ -8,7 +8,10 @@ function errorMessage(error: unknown): string {
 }
 
 /** 按来源网站配置导航范围；网站授权始终由用户操作触发。 */
-export function SameTabSettingsPanel() {
+export function SameTabSettingsPanel({ retainedDomains }: {
+  /** 返回其他功能（如站点收藏规则）仍占用的域名，删除导航规则时不撤销这些授权。 */
+  retainedDomains?: () => Promise<string[] | undefined>
+}) {
   const [settings, setSettings] = useState<SameTabSettings>(DEFAULT_SAME_TAB_SETTINGS)
   const [domainInput, setDomainInput] = useState('')
   const [currentDomain, setCurrentDomain] = useState<string>()
@@ -105,11 +108,14 @@ export function SameTabSettingsPanel() {
     try {
       const { origins = [] } = await chrome.permissions.getAll()
       const required: string[] = chrome.runtime.getManifest().host_permissions ?? []
+      // 未注入归属查询时按无外部占用处理；undefined 表示读取失败，无法确认时不撤销，避免误伤其他功能的授权。
+      const retained = retainedDomains ? await retainedDomains().catch(() => undefined) : []
       const overlaps = (left: string, right: string) => matchesSite(left, right) || matchesSite(right, left)
       // 同时清理此前因重叠规则保留的父域/子域授权，保留仍在使用及非本次相关的权限。
       const unused = origins.filter((origin) => {
         const grantedDomain = normalizeSiteDomain(origin.replace('://*.', '://'))
         if (!grantedDomain || !overlaps(grantedDomain, domain) || sites.some((site) => overlaps(site.domain, grantedDomain))) return false
+        if (retained === undefined || retained.some((retainedDomain) => overlaps(retainedDomain, grantedDomain))) return false
         // Chrome 撤销父域模式会连带移除其覆盖的必需权限，保留这种共享授权。
         return !required.some((requiredOrigin) => {
           const scheme = requiredOrigin.split('://')[0]
