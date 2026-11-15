@@ -5,7 +5,7 @@ LinkDeck 是面向 Chrome 和 Edge 的 Manifest V3 扩展，使用 React、TypeS
 ## 模块边界
 
 - `src/`：应用入口、页面组合、后台注册及集成测试。
-- `packages/` 下的 `bookmarks`、`data-transfer`、`gist-sync`、`tab-search`、`tab-auto-close`、`same-tab-navigation`：各功能的实现、类型、存储键、样式及测试。
+- `packages/` 下的 `bookmarks`、`data-transfer`、`github-sync`、`tab-search`、`tab-auto-close`、`same-tab-navigation`：各功能的实现、类型、存储键、样式及测试。
 - `packages/ui`：共享界面组件和样式；`packages/shared`：通用工具；`packages/test-utils`：Chrome mock 和测试初始化，仅用于开发依赖。
 - `public/`：扩展清单、本地化和静态资源；`scripts/`：构建校验与打包；`docs/`：商店资料与隐私说明。
 
@@ -34,9 +34,9 @@ LinkDeck 是面向 Chrome 和 Edge 的 Manifest V3 扩展，使用 React、TypeS
 
 ## 数据、权限与隐私
 
-- 收藏数据使用 `chrome.storage.sync`；自动关闭和当前标签页导航的配置保持本地，不混入收藏同步、JSON 备份或 Gist 同步。
-- Gist 令牌只保存在 `chrome.storage.local`，不得进入同步数据、导出文件、日志或错误提示。不要输出或提交 `dist.pem` 等私钥。
-- Gist 同步是可选功能；未连接时不请求 GitHub。secret Gist 的链接持有者可读取内容，不将其描述为加密或真正私有的存储。
+- 收藏数据使用 `chrome.storage.sync`；自动关闭和当前标签页导航的配置保持本地，不混入收藏同步、JSON 备份或 GitHub 同步。
+- GitHub 令牌只保存在 `chrome.storage.local`，不得进入同步数据、导出文件、日志或错误提示。不要输出或提交 `dist.pem` 等私钥。
+- GitHub 同步默认关闭。用户主动检查仓库或已绑定仓库时才请求 GitHub。仓库须为私有，同步文件以明文保存在仓库及 Git 提交历史中。
 - 标签页和历史搜索数据只用于当次搜索，不写入收藏、同步或上传。图标请求仅包含域名，不携带完整网址、查询参数或收藏标题。
 - 网站权限按用户操作申请，不将可选授权改为默认全站访问；不引入远程脚本或遥测。
 - 修改存储格式、同步合并、导入替换或权限行为时，检查兼容性和失败路径，并同步调整相关文档。

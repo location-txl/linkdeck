@@ -4,7 +4,7 @@
 @import '@linkdeck/tab-auto-close/styles.css';
 @import '@linkdeck/same-tab-navigation/styles.css';
 @import '@linkdeck/data-transfer/styles.css';
-@import '@linkdeck/gist-sync/styles.css';
+@import '@linkdeck/github-sync/styles.css';
 
 .app-shell {
   position: relative;
