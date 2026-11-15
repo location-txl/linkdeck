@@ -31,6 +31,22 @@ async function emitCreated(tab: Partial<chrome.tabs.Tab>) {
   for (let index = 0; index < 5; index += 1) await Promise.resolve()
 }
 
+/** 模拟真实 Chrome：tabsGroup 分配组号并更新标签页归属，供后续 chrome.tabs.get 读到。 */
+function useRealisticGrouping(
+  tabs: Array<{ id: number; windowId: number; groupId: number; title: string; url: string }>,
+) {
+  setTabs(tabs)
+  let nextGroupId = 77
+  tabsGroup.mockImplementation(async ({ tabIds, groupId }: { tabIds: number[]; groupId?: number }) => {
+    const resolved = groupId ?? nextGroupId++
+    for (const tab of tabs) {
+      if (tabIds.includes(tab.id)) tab.groupId = resolved
+    }
+    setTabs(tabs)
+    return resolved
+  })
+}
+
 describe('tab group service', () => {
   beforeEach(() => {
     installChromeMock()
@@ -110,22 +126,29 @@ describe('tab group service', () => {
       { id: 11, windowId: 3, groupId: -1, title: '子页面 1', url: 'https://child1.example.com' },
       { id: 12, windowId: 3, groupId: -1, title: '子页面 2', url: 'https://child2.example.com' },
     ]
-    const syncTabs = () => setTabs(tabs)
-    syncTabs()
+    useRealisticGrouping(tabs)
     await setTabGroupSettings({ enabled: true })
-    let nextGroupId = 77
-    // 模拟真实 Chrome：分组后更新标签页的组归属，供后续 chrome.tabs.get 读到。
-    tabsGroup.mockImplementation(async ({ tabIds, groupId }: { tabIds: number[]; groupId?: number }) => {
-      const resolved = groupId ?? nextGroupId++
-      for (const tab of tabs) {
-        if (tabIds.includes(tab.id)) tab.groupId = resolved
-      }
-      syncTabs()
-      return resolved
-    })
 
     const first = handleTabGroupCreated(createdTab({ id: 11, openerTabId: 10 }))
     const second = handleTabGroupCreated(createdTab({ id: 12, openerTabId: 10 }))
+    await Promise.all([first, second])
+
+    expect(tabsGroup).toHaveBeenNthCalledWith(1, { tabIds: [10, 11], createProperties: { windowId: 3 } })
+    expect(tabsGroup).toHaveBeenNthCalledWith(2, { tabIds: [12], groupId: 77 })
+    expect(tabs.map((tab) => tab.groupId)).toEqual([77, 77, 77])
+  })
+
+  it('serializes chained openers into one group', async () => {
+    const tabs = [
+      { id: 10, windowId: 3, groupId: -1, title: '页面 A', url: 'https://a.example.com' },
+      { id: 11, windowId: 3, groupId: -1, title: '页面 B', url: 'https://b.example.com' },
+      { id: 12, windowId: 3, groupId: -1, title: '页面 C', url: 'https://c.example.com' },
+    ]
+    useRealisticGrouping(tabs)
+    await setTabGroupSettings({ enabled: true })
+
+    const first = handleTabGroupCreated(createdTab({ id: 11, openerTabId: 10 }))
+    const second = handleTabGroupCreated(createdTab({ id: 12, openerTabId: 11 }))
     await Promise.all([first, second])
 
     expect(tabsGroup).toHaveBeenNthCalledWith(1, { tabIds: [10, 11], createProperties: { windowId: 3 } })
