@@ -1,0 +1,23 @@
+{
+  "name": "@linkdeck/tab-group",
+  "version": "1.2.0",
+  "private": true,
+  "type": "module",
+  "exports": {
+    ".": "./src/types.ts",
+    "./preferences": "./src/preferences.ts",
+    "./service": "./src/service.ts",
+    "./settings": "./src/TabGroupSettings.tsx",
+    "./background": "./src/background.ts",
+    "./styles.css": "./src/styles.css"
+  },
+  "peerDependencies": {
+    "react": "^19.2.8"
+  },
+  "devDependencies": {
+    "@linkdeck/test-utils": "workspace:*",
+    "@testing-library/react": "^16.3.0",
+    "@testing-library/user-event": "^14.6.1",
+    "vitest": "^4.0.18"
+  }
+}

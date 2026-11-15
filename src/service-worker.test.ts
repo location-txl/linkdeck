@@ -254,7 +254,7 @@ describe('extension service worker', () => {
     expect(alarmsOnAlarmListeners).toHaveLength(1)
     expect(tabsOnActivatedListeners).toHaveLength(2)
     expect(tabsOnUpdatedListeners).toHaveLength(2)
-    expect(tabsOnCreatedListeners).toHaveLength(1)
+    expect(tabsOnCreatedListeners).toHaveLength(2)
     expect(tabsOnRemovedListeners).toHaveLength(1)
     expect(permissionsOnAddedListeners).toHaveLength(3)
     expect(permissionsOnRemovedListeners).toHaveLength(3)

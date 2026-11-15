@@ -21,7 +21,7 @@
     "48": "icons/icon-48.png",
     "128": "icons/icon-128.png"
   },
-  "permissions": ["storage", "tabs", "history", "contextMenus", "activeTab", "scripting", "alarms"],
+  "permissions": ["storage", "tabs", "tabGroups", "history", "contextMenus", "activeTab", "scripting", "alarms"],
   "host_permissions": ["https://api.github.com/*"],
   "optional_host_permissions": ["http://*/*", "https://*/*"],
   "commands": {

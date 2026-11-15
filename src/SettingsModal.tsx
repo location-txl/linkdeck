@@ -6,6 +6,7 @@ import { getSiteBookmarkSettings } from '@linkdeck/bookmarks/site-bookmark-prefe
 import type { TagClickMode } from '@linkdeck/bookmarks'
 import { SameTabSettingsPanel } from '@linkdeck/same-tab-navigation/settings'
 import { AutoCloseSettingsPanel } from '@linkdeck/tab-auto-close/settings'
+import { TabGroupSettingsPanel } from '@linkdeck/tab-group/settings'
 import { Modal } from '@linkdeck/ui/modal'
 
 /** 删除导航规则时仍被站点收藏规则或 X 收藏占用的域名；读取失败返回 undefined，由导航侧保留全部相关授权。 */
@@ -27,6 +28,7 @@ export function SettingsModal({ mode, onSelectMode, onClose }: { mode: TagClickM
         <SiteBookmarkSettingsPanel />
         <SameTabSettingsPanel retainedDomains={retainedNavigationDomains} />
         <AutoCloseSettingsPanel />
+        <TabGroupSettingsPanel />
         <section className="settings__section settings__about" aria-labelledby="settings-about-title">
           <h3 id="settings-about-title">关于</h3>
           <div><strong>LinkDeck</strong><span>v{version}</span></div>

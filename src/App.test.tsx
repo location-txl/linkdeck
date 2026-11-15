@@ -8,8 +8,9 @@ import { setSiteBookmarkSettings } from '@linkdeck/bookmarks/site-bookmark-prefe
 import { STORAGE_KEYS as SAME_TAB_STORAGE_KEYS } from '@linkdeck/same-tab-navigation'
 import { siteOrigins } from '@linkdeck/same-tab-navigation/rules'
 import './styles.css'
-import { installChromeMock, permissionsGetAll, tabsCreate } from '@linkdeck/test-utils'
+import { installChromeMock, permissionsGetAll, getLocalStore, tabsCreate } from '@linkdeck/test-utils'
 import { STORAGE_KEYS as AUTO_CLOSE_STORAGE_KEYS } from '@linkdeck/tab-auto-close'
+import { STORAGE_KEYS as TAB_GROUP_STORAGE_KEYS } from '@linkdeck/tab-group'
 
 describe('LinkDeck popup', () => {
   beforeEach(() => installChromeMock())
@@ -307,6 +308,21 @@ describe('LinkDeck popup', () => {
     expect(within(settings).getByRole('checkbox', { name: /启用自动关闭/ })).toBeChecked()
     await user.click(within(settings).getByRole('button', { name: '移除白名单 example.com' }))
     expect(within(settings).queryByText('example.com')).not.toBeInTheDocument()
+  })
+
+  it('toggles link tab grouping from settings', async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    await screen.findByRole('heading', { name: '全部链接' })
+
+    await user.click(screen.getByRole('button', { name: '设置' }))
+    const settings = await screen.findByRole('dialog', { name: '设置' })
+    const checkbox = within(settings).getByRole('checkbox', { name: /启用链接标签组/ })
+    expect(checkbox).not.toBeChecked()
+
+    await user.click(checkbox)
+    await waitFor(() => expect(getLocalStore()[TAB_GROUP_STORAGE_KEYS.tabGroupSettings]).toEqual({ enabled: true }))
+    expect(within(settings).getByRole('checkbox', { name: /启用链接标签组/ })).toBeChecked()
   })
 
   it('keeps site bookmark grants when removing a shared navigation rule', async () => {
