@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it } from 'vitest'
 import {
   buildSelector, defaultTagName, matchesSite, normalizeSiteBookmarkSettings, normalizeSiteDomain, siteOrigins,
 } from './rules'
-import { MAX_SITE_RULES, type SiteRule } from './types'
+import { MAX_SITE_RULES, MAX_SITE_SELECTOR_LENGTH, type SiteRule } from './types'
 
 const baseRule = {
   id: 'rule-1',
@@ -55,6 +55,7 @@ describe('站点收藏规则读取', () => {
     ['missing id', { ...baseRule, id: '' }],
     ['invalid domain', { ...baseRule, domain: 'not a domain' }],
     ['empty trigger selector', { ...baseRule, triggerSelector: '  ' }],
+    ['overlong container selector', { ...baseRule, containerSelector: 'a'.repeat(MAX_SITE_SELECTOR_LENGTH + 1) }],
     ['invalid url source kind', { ...baseRule, url: { source: { kind: 'pageTitle' } } }],
     ['text source without selector', { ...baseRule, title: { source: { kind: 'text' } } }],
     ['attribute source without name', { ...baseRule, title: { source: { kind: 'attribute', selector: 'h1' } } }],

@@ -101,7 +101,9 @@ export function normalizeSiteBookmarkSettings(value: unknown): SiteBookmarkSetti
     const domain = typeof rule.domain === 'string' ? normalizeSiteDomain(rule.domain) : undefined
     const triggerSelector = normalizeSelector(rule.triggerSelector)
     if (!domain || !triggerSelector) continue
-    const containerSelector = normalizeSelector(rule.containerSelector)
+    const containerSelector = typeof rule.containerSelector === 'string' ? rule.containerSelector.trim() : ''
+    // 非空但超长的容器选择器视为损坏规则，丢弃整条规则而不是静默退化为整页搜索。
+    if (containerSelector.length > MAX_SITE_SELECTOR_LENGTH) continue
     const url = normalizeExtractConfig<UrlExtractSource>(rule.url, URL_SOURCE_KINDS)
     const title = normalizeExtractConfig<TitleExtractSource>(rule.title, TITLE_SOURCE_KINDS)
     if (!url || !title) continue
