@@ -1,6 +1,6 @@
 {
   "name": "@linkdeck/bookmarks",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -14,12 +14,18 @@
     "./page": "./src/BookmarksPage.tsx",
     "./settings": "./src/BookmarkSettings.tsx",
     "./x-bookmark-content": "./src/x-bookmark/content.ts",
+    "./x-bookmark-preferences": "./src/x-bookmark/preferences.ts",
     "./x-bookmark-settings": "./src/x-bookmark/XBookmarkSettings.tsx",
+    "./site-bookmark-content": "./src/site-bookmark/content.ts",
+    "./site-bookmark-preferences": "./src/site-bookmark/preferences.ts",
+    "./site-bookmark-picker": "./src/site-bookmark/picker.ts",
+    "./site-bookmark-settings": "./src/site-bookmark/SiteBookmarkSettings.tsx",
     "./background": "./src/background.ts",
     "./styles.css": "./src/styles.css"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
+    "@linkdeck/same-tab-navigation": "workspace:*",
     "@linkdeck/shared": "workspace:*",
     "@linkdeck/ui": "workspace:*"
   },
