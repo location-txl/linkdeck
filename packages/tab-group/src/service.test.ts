@@ -104,6 +104,35 @@ describe('tab group service', () => {
     expect(tabsGroup).not.toHaveBeenCalled()
   })
 
+  it('serializes concurrent child tabs into one group', async () => {
+    const tabs = [
+      { id: 10, windowId: 3, groupId: -1, title: '来源页面', url: 'https://source.example.com' },
+      { id: 11, windowId: 3, groupId: -1, title: '子页面 1', url: 'https://child1.example.com' },
+      { id: 12, windowId: 3, groupId: -1, title: '子页面 2', url: 'https://child2.example.com' },
+    ]
+    const syncTabs = () => setTabs(tabs)
+    syncTabs()
+    await setTabGroupSettings({ enabled: true })
+    let nextGroupId = 77
+    // 模拟真实 Chrome：分组后更新标签页的组归属，供后续 chrome.tabs.get 读到。
+    tabsGroup.mockImplementation(async ({ tabIds, groupId }: { tabIds: number[]; groupId?: number }) => {
+      const resolved = groupId ?? nextGroupId++
+      for (const tab of tabs) {
+        if (tabIds.includes(tab.id)) tab.groupId = resolved
+      }
+      syncTabs()
+      return resolved
+    })
+
+    const first = handleTabGroupCreated(createdTab({ id: 11, openerTabId: 10 }))
+    const second = handleTabGroupCreated(createdTab({ id: 12, openerTabId: 10 }))
+    await Promise.all([first, second])
+
+    expect(tabsGroup).toHaveBeenNthCalledWith(1, { tabIds: [10, 11], createProperties: { windowId: 3 } })
+    expect(tabsGroup).toHaveBeenNthCalledWith(2, { tabIds: [12], groupId: 77 })
+    expect(tabs.map((tab) => tab.groupId)).toEqual([77, 77, 77])
+  })
+
   it('gives up silently when the opener tab is gone', async () => {
     await setTabGroupSettings({ enabled: true })
     tabsGet.mockRejectedValueOnce(new Error('No tab with id: 10'))
