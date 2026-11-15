@@ -1,0 +1,33 @@
+.tab-group-settings {
+  gap: 10px;
+}
+
+.tab-group-settings__heading {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.tab-group-settings__heading h3 {
+  color: var(--ink-soft);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.tab-group-settings__heading small,
+.tab-group-settings__saving {
+  color: var(--ink-faint);
+  font-size: 9px;
+  line-height: 1.4;
+}
+
+.tab-group-settings__heading > div {
+  display: grid;
+  gap: 3px;
+}
+
+.tab-group-settings__saving {
+  white-space: nowrap;
+}

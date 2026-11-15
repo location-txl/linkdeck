@@ -6,7 +6,7 @@ type StorageChange = { oldValue?: unknown; newValue?: unknown }
 type StorageListener = (changes: Record<string, StorageChange>, areaName: string) => void
 type ActivatedListener = (activeInfo: { tabId: number; windowId: number }) => void
 type UpdatedListener = (tabId: number, changeInfo: { url?: string }, tab: { active?: boolean; url?: string }) => void
-type MockTab = { id?: number; active?: boolean; pinned?: boolean; audible?: boolean; incognito?: boolean; windowId?: number; title?: string; url?: string }
+type MockTab = { id?: number; active?: boolean; pinned?: boolean; audible?: boolean; incognito?: boolean; windowId?: number; openerTabId?: number; groupId?: number; title?: string; url?: string }
 type CommandListener = (command: string, tab?: MockTab) => void
 type CreatedListener = (tab: MockTab) => void
 type RemovedListener = (tabId: number, removeInfo: { windowId: number; isWindowClosing: boolean }) => void
@@ -37,6 +37,8 @@ export const tabsQuery = vi.fn()
 export const tabsGet = vi.fn()
 export const tabsUpdate = vi.fn()
 export const tabsRemove = vi.fn()
+export const tabsGroup = vi.fn()
+export const tabGroupsUpdate = vi.fn()
 export const historySearch = vi.fn()
 export const scriptingExecuteScript = vi.fn()
 export const scriptingGetRegisteredContentScripts = vi.fn()
@@ -139,6 +141,8 @@ export function installChromeMock(initialSync: Store = {}) {
   tabsGet.mockReset()
   tabsUpdate.mockReset()
   tabsRemove.mockReset()
+  tabsGroup.mockReset()
+  tabGroupsUpdate.mockReset()
   historySearch.mockReset()
   scriptingExecuteScript.mockReset()
   scriptingGetRegisteredContentScripts.mockReset()
@@ -174,6 +178,8 @@ export function installChromeMock(initialSync: Store = {}) {
   tabsRemove.mockImplementation(async (tabId: number) => {
     if (queriedTabs) queriedTabs = queriedTabs.filter((tab) => tab.id !== tabId)
   })
+  tabsGroup.mockResolvedValue(1)
+  tabGroupsUpdate.mockResolvedValue({ id: 1, windowId: 1, title: '', color: 'grey', collapsed: false })
   historySearch.mockResolvedValue([])
   scriptingExecuteScript.mockResolvedValue([])
   let registeredScripts: chrome.scripting.RegisteredContentScript[] = []
@@ -270,7 +276,11 @@ export function installChromeMock(initialSync: Store = {}) {
         removeListener: (listener: RemovedListener) => tabsOnRemovedListeners.delete(listener),
       },
       remove: tabsRemove,
+      group: tabsGroup,
       sendMessage: tabsSendMessage,
+    },
+    tabGroups: {
+      update: tabGroupsUpdate,
     },
     history: {
       search: historySearch,

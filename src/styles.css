@@ -2,6 +2,7 @@
 @import '@linkdeck/ui/styles.css';
 @import '@linkdeck/bookmarks/styles.css';
 @import '@linkdeck/tab-auto-close/styles.css';
+@import '@linkdeck/tab-group/styles.css';
 @import '@linkdeck/same-tab-navigation/styles.css';
 @import '@linkdeck/data-transfer/styles.css';
 @import '@linkdeck/github-sync/styles.css';

@@ -21,6 +21,7 @@
     "@linkdeck/github-sync": "workspace:*",
     "@linkdeck/same-tab-navigation": "workspace:*",
     "@linkdeck/tab-auto-close": "workspace:*",
+    "@linkdeck/tab-group": "workspace:*",
     "@linkdeck/tab-search": "workspace:*",
     "@linkdeck/ui": "workspace:*",
     "react": "^19.2.8",
